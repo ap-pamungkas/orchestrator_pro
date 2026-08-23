@@ -1,7 +1,7 @@
 import React from 'react';
 import { KitComponent, CodeVariation, ArchitectureState } from '@/types';
 import { CODE_VARIATIONS } from '@/data/codeVariations';
-import { FileCodeIcon, AlertTriangleIcon } from '../icons/Icons';
+import { FileCodeIcon } from '../icons/Icons';
 
 interface LogicDocumentationCardProps {
   architecture: ArchitectureState;

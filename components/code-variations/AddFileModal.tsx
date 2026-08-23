@@ -138,7 +138,6 @@ export const AddFileModal: React.FC<AddFileModalProps> = ({
     let finalContent = fileContent;
     if (!finalContent) {
       if (cleanName.endsWith('.h') || cleanName.endsWith('.hpp')) {
-        const guard = cleanName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
         finalContent = `// ============================================\n// ${cleanName}\n// ============================================\n#pragma once\n\n// Add header declarations here...\n`;
       } else {
         finalContent = `// ============================================\n// ${cleanName}\n// ============================================\n#include <Arduino.h>\n\n// Add source implementation here...\n`;

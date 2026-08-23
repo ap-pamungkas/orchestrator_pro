@@ -45,7 +45,7 @@ interface CodeVariationCardProps {
 
 export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
   architecture,
-  selectedComponent,
+  selectedComponent: _selectedComponent,
   selectedVariation,
   allVariations,
   isExpanded = false,
@@ -144,7 +144,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
         [currentVariation.id]: prev[currentVariation.id] !== false,
       }));
     }
-  }, [currentVariation?.id]);
+  }, [currentVariation]);
 
   // Synchronize when switching to a different variation
   const currentVariationIdRef = useRef<string | null>(null);
@@ -181,7 +181,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
   }, [currentCode]);
 
   // Update in-memory file content buffer on code change
-  const handleCodeChange = (newCode: string) => {
+  const handleCodeChange = useCallback((newCode: string) => {
     setCurrentCode(newCode);
     setSaveStatus('unsaved');
     setUnsavedFiles((prev) => ({ ...prev, [activeFileName]: true }));
@@ -198,7 +198,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
         };
       });
     }
-  };
+  }, [activeFileName, currentVariation, currentFiles]);
 
   // Switch Active File Tab
   const handleSelectTab = (fileName: string) => {
@@ -418,7 +418,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
     }
     setSaveStatus('saved');
     setUnsavedFiles((prev) => ({ ...prev, [activeFileName]: false }));
-  }, [currentVariation, activeFileName]);
+  }, [currentVariation, activeFileName, handleCodeChange]);
 
   // Copy code to clipboard
   const handleCopy = useCallback(() => {

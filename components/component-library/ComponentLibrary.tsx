@@ -202,15 +202,15 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
             className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-100/80 hover:bg-blue-50 text-blue-700 font-medium transition-colors cursor-pointer text-left border border-zinc-200/80"
           >
             <PlusIcon className="w-3.5 h-3.5" />
-            <span>+ Create Custom Component</span>
+            <span>Create Custom Component</span>
           </button>
-          <button
+          {/* <button
             onClick={(e) => e.preventDefault()}
             className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors cursor-pointer text-left"
           >
             <HelpCircleIcon className="w-3.5 h-3.5 text-zinc-400" />
             <span>Help & Pinout Guide</span>
-          </button>
+          </button> */}
           <button
             onClick={(e) => e.preventDefault()}
             className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors cursor-pointer text-left"

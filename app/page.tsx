@@ -54,7 +54,7 @@ export default function Home() {
         const parsedCustomComps = JSON.parse(savedCustomComps) as KitComponent[];
         if (Array.isArray(parsedCustomComps) && parsedCustomComps.length > 0) {
           // Merge avoiding ID collisions
-          setComponents((prev) => {
+          setComponents(() => {
             const builtInIds = new Set(KIT_COMPONENTS.map((c) => c.id));
             const validCustom = parsedCustomComps.filter((c) => !builtInIds.has(c.id));
             return [...KIT_COMPONENTS, ...validCustom];
