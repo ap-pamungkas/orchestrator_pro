@@ -70,7 +70,7 @@ describe('ComponentLibrary Component', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('+ Create Custom Component'));
+    fireEvent.click(screen.getByText(/Create Custom Component/));
     expect(screen.getByText('Add New Kit Component')).toBeInTheDocument();
   });
 });

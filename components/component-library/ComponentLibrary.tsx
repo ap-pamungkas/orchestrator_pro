@@ -7,7 +7,6 @@ import {
   LayersIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  HelpCircleIcon,
   TerminalIcon,
   GripVerticalIcon,
   PlusIcon,
