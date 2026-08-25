@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ComponentCategory {
+  input
+  board
+  output
+  conditioner
+}
+
+enum ArchitectureMode {
+  educator
+  developer
+}
+
+enum SlotLayer {
+  input
+  board
+  output
+}
+
+enum WireCategory {
+  input
+  board
+  output
+}
+
+enum Difficulty {
+  Beginner
+  Intermediate
+  Advanced
+}
+
+model Component {
+  id                      String            @id
+  name                    String
+  category                ComponentCategory
+  type                    String
+  description             String?           @db.Text
+  imageUrl                String?           @map("image_url")
+  pinInfo                 String?           @map("pin_info")
+  defaultGpio             String?           @map("default_gpio")
+  statusBadge             String?           @map("status_badge")
+  requiredConditionerId   String?           @map("required_conditioner_id")
+  requiredConditionerName String?           @map("required_conditioner_name")
+  isCustom                Boolean           @default(false) @map("is_custom")
+
+  requiredConditioner  Component?  @relation("ComponentConditioner", fields: [requiredConditionerId], references: [id])
+  requiredByComponents Component[] @relation("ComponentConditioner")
+
+  pins                         ComponentPin[]
+  codeVariations               CodeVariation[]
+  architectureSlots            ArchitectureSlot[]
+  wireConnectionsAsConditioner WireConnection[]   @relation("WireConditioner")
+
+  @@map("components")
+}
+
+model ComponentPin {
+  id             String  @id @default(uuid())
+  componentId    String  @map("component_id")
+  pinLabel       String  @map("pin_label")
+  pinType        String  @map("pin_type")
+  defaultGpioNum String? @map("default_gpio_num")
+
+  component Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@map("component_pins")
+}
+
+model Architecture {
+  id        String           @id @default(uuid())
+  title     String
+  mode      ArchitectureMode
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  slots ArchitectureSlot[]
+  wires WireConnection[]
+
+  @@map("architectures")
+}
+
+model ArchitectureSlot {
+  id             String    @id @default(uuid())
+  architectureId String    @map("architecture_id")
+  layer          SlotLayer
+  slotIndex      Int       @map("slot_index")
+  componentId    String?   @map("component_id")
+
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  component    Component?   @relation(fields: [componentId], references: [id])
+
+  @@unique([architectureId, layer, slotIndex])
+  @@map("architecture_slots")
+}
+
+model WireConnection {
+  id                     String       @id @default(uuid())
+  architectureId         String       @map("architecture_id")
+  fromCategory           WireCategory @map("from_category")
+  fromSlot               Int          @map("from_slot")
+  toCategory             WireCategory @map("to_category")
+  toSlot                 Int          @map("to_slot")
+  conditionerComponentId String?      @map("conditioner_component_id")
+
+  architecture         Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  conditionerComponent Component?   @relation("WireConditioner", fields: [conditionerComponentId], references: [id])
+
+  @@map("wire_connections")
+}
+
+model CodeVariation {
+  id           String     @id
+  componentId  String     @map("component_id")
+  title        String
+  description  String?    @db.Text
+  difficulty   Difficulty
+  inputCount   Int        @map("input_count")
+  outputCount  Int        @map("output_count")
+  command      String?
+  setupSummary String?    @map("setup_summary") @db.Text
+  logicSummary String?    @map("logic_summary") @db.Text
+  sourceCode   String     @map("source_code") @db.Text
+  isCustom     Boolean    @default(false) @map("is_custom")
+
+  component    Component         @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  files        CodeFile[]
+  explanations CodeExplanation[]
+
+  @@map("code_variations")
+}
+
+model CodeFile {
+  id          String  @id @default(uuid())
+  variationId String  @map("variation_id")
+  fileName    String  @map("file_name")
+  fileContent String  @map("file_content") @db.Text
+  isReadOnly  Boolean @default(false) @map("is_read_only")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  variation CodeVariation @relation(fields: [variationId], references: [id], onDelete: Cascade)
+
+  @@map("code_files")
+}
+
+model CodeExplanation {
+  id          String @id @default(uuid())
+  variationId String @map("variation_id")
+  symbol      String
+  description String @db.Text
+  sortOrder   Int    @default(0) @map("sort_order")
+
+  variation CodeVariation @relation(fields: [variationId], references: [id], onDelete: Cascade)
+
+  @@map("code_explanations")
+}

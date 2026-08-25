@@ -10,11 +10,25 @@ import { ComponentLibrary } from '@/components/component-library/ComponentLibrar
 import { ArchitectureCanvas } from '@/components/architecture/ArchitectureCanvas';
 import { CodeVariationCard } from '@/components/code-variations/CodeVariationCard';
 import { CpuIcon, CodeIcon } from '@/components/icons/Icons';
+import { useToast } from '@/components/common/Toast';
+import {
+  saveKitComponentAction,
+  deleteKitComponentAction,
+  fetchComponents,
+} from '@/app/actions/component-actions';
+import {
+  saveCodeVariationAction,
+  updateCodeVariationAction,
+  deleteCodeVariationAction,
+  fetchAllVariationsAction,
+} from '@/app/actions/code-variation-actions';
 
 const STORAGE_CUSTOM_COMPONENTS = 'orchestrator_custom_components_v1';
 const STORAGE_ALL_VARIATIONS = 'orchestrator_variations_state_v2';
 
 export default function Home() {
+  const toast = useToast();
+
   // Components State (Built-in + User Added Custom Components)
   const [components, setComponents] = useState<KitComponent[]>(KIT_COMPONENTS);
 
@@ -50,133 +64,329 @@ export default function Home() {
   // App Mode State ('education' | 'developer')
   const [mode, setMode] = useState<AppMode>('educator');
 
-  // Load custom persisted data from localStorage on client mount
+  // Load custom persisted data from database / localStorage on client mount
   useEffect(() => {
-    try {
-      const savedCustomComps = localStorage.getItem(STORAGE_CUSTOM_COMPONENTS);
-      if (savedCustomComps) {
-        const parsedCustomComps = JSON.parse(savedCustomComps) as KitComponent[];
-        if (Array.isArray(parsedCustomComps) && parsedCustomComps.length > 0) {
-          // Merge avoiding ID collisions
-          setComponents(() => {
-            const builtInIds = new Set(KIT_COMPONENTS.map((c) => c.id));
-            const validCustom = parsedCustomComps.filter((c) => !builtInIds.has(c.id));
-            return [...KIT_COMPONENTS, ...validCustom];
+    let isMounted = true;
+
+    async function loadData() {
+      // 1. First load from localStorage for quick instant UI render
+      try {
+        const savedCustomComps = localStorage.getItem(STORAGE_CUSTOM_COMPONENTS);
+        if (savedCustomComps) {
+          const parsedCustomComps = JSON.parse(savedCustomComps) as KitComponent[];
+          if (Array.isArray(parsedCustomComps) && parsedCustomComps.length > 0) {
+            setComponents(() => {
+              const builtInIds = new Set(KIT_COMPONENTS.map((c) => c.id));
+              const validCustom = parsedCustomComps.filter((c) => !builtInIds.has(c.id));
+              return [...KIT_COMPONENTS, ...validCustom];
+            });
+          }
+        }
+
+        const savedAllCases = localStorage.getItem(STORAGE_ALL_VARIATIONS);
+        if (savedAllCases) {
+          const parsedCases = JSON.parse(savedAllCases) as CodeVariation[];
+          if (Array.isArray(parsedCases) && parsedCases.length > 0) {
+            setVariations(parsedCases);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load custom data from localStorage', e);
+      }
+
+      // 2. Hydrate from PostgreSQL Database via Server Actions
+      try {
+        const [compRes, varRes] = await Promise.all([
+          fetchComponents(),
+          fetchAllVariationsAction(),
+        ]);
+
+        if (isMounted) {
+          if (compRes.success && compRes.data && compRes.data.length > 0) {
+            setComponents(compRes.data);
+          }
+          if (varRes.success && varRes.data && varRes.data.length > 0) {
+            setVariations(varRes.data);
+          }
+        }
+      } catch (err) {
+        console.warn('Initial DB fetch fallback to offline/cache', err);
+      }
+    }
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Handler: Add New Component to Library (With DB Sync & Toast)
+  const handleAddComponent = useCallback(
+    async (newComp: KitComponent) => {
+      const loadingId = toast.loading(
+        'Menyimpan ke Database...',
+        `Menyimpan komponen "${newComp.name}" (${newComp.category.toUpperCase()}).`
+      );
+
+      try {
+        const res = await saveKitComponentAction(newComp);
+        toast.dismissToast(loadingId);
+
+        if (res.success) {
+          toast.success(
+            'Komponen Berhasil Disimpan',
+            res.message || `Komponen "${newComp.name}" berhasil disimpan ke database.`
+          );
+
+          setComponents((prev) => {
+            const updated = [...prev, newComp];
+            try {
+              const customOnly = updated.filter((c) => c.isCustom);
+              localStorage.setItem(STORAGE_CUSTOM_COMPONENTS, JSON.stringify(customOnly));
+            } catch (err) {
+              console.warn('Failed to persist custom components', err);
+            }
+            return updated;
           });
+
+          setStatusMessage(`Disimpan ke DB: "${newComp.name}" (${newComp.category.toUpperCase()})`);
+          setIsErrorStatus(false);
+        } else {
+          toast.error(
+            'Gagal Menyimpan ke Database',
+            res.error || 'Terjadi kesalahan saat menyimpan komponen ke database.'
+          );
+          setStatusMessage(`Gagal simpan DB: ${res.error}`);
+          setIsErrorStatus(true);
         }
+      } catch (err: unknown) {
+        toast.dismissToast(loadingId);
+        const msg = err instanceof Error ? err.message : 'Koneksi database gagal';
+        toast.error('Gagal Menyimpan ke Database', msg);
+        setStatusMessage(`Error DB: ${msg}`);
+        setIsErrorStatus(true);
       }
+    },
+    [toast]
+  );
 
-      const savedAllCases = localStorage.getItem(STORAGE_ALL_VARIATIONS);
-      if (savedAllCases) {
-        const parsedCases = JSON.parse(savedAllCases) as CodeVariation[];
-        if (Array.isArray(parsedCases) && parsedCases.length > 0) {
-          setVariations(parsedCases);
+  // Handler: Delete Custom Component (With DB Sync & Toast)
+  const handleDeleteComponent = useCallback(
+    async (componentId: string) => {
+      const targetComp = components.find((c) => c.id === componentId);
+      const compName = targetComp?.name || componentId;
+      const loadingId = toast.loading(
+        'Menghapus dari Database...',
+        `Memproses penghapusan komponen "${compName}".`
+      );
+
+      try {
+        const res = await deleteKitComponentAction(componentId);
+        toast.dismissToast(loadingId);
+
+        if (res.success) {
+          toast.success(
+            'Komponen Berhasil Dihapus',
+            res.message || `Komponen "${compName}" berhasil dihapus dari database.`
+          );
+
+          setComponents((prev) => {
+            const updated = prev.filter((c) => c.id !== componentId);
+            try {
+              const customOnly = updated.filter((c) => c.isCustom);
+              localStorage.setItem(STORAGE_CUSTOM_COMPONENTS, JSON.stringify(customOnly));
+            } catch (err) {
+              console.warn('Failed to persist custom components', err);
+            }
+            return updated;
+          });
+
+          // Remove from active architecture if present
+          setArchitecture((prev) => {
+            const cleanSlots = (slots: (KitComponent | null)[]) =>
+              slots.map((c) => (c?.id === componentId ? null : c));
+
+            return {
+              inputs: cleanSlots(prev.inputs),
+              boards: cleanSlots(prev.boards),
+              outputs: cleanSlots(prev.outputs),
+              inputConditioners: cleanSlots(prev.inputConditioners || []),
+              outputConditioners: cleanSlots(prev.outputConditioners || []),
+              wires: (prev.wires || []).filter((w) => w.conditioner?.id !== componentId),
+            };
+          });
+
+          if (selectedComponent?.id === componentId) {
+            setSelectedComponent(null);
+          }
+          setStatusMessage(`Dihapus dari DB: "${compName}"`);
+          setIsErrorStatus(false);
+        } else {
+          toast.error(
+            'Gagal Menghapus Komponen',
+            res.error || 'Terjadi kesalahan saat menghapus komponen dari database.'
+          );
+          setStatusMessage(`Gagal hapus DB: ${res.error}`);
+          setIsErrorStatus(true);
         }
+      } catch (err: unknown) {
+        toast.dismissToast(loadingId);
+        const msg = err instanceof Error ? err.message : 'Koneksi database gagal';
+        toast.error('Gagal Menghapus Komponen', msg);
+        setStatusMessage(`Error DB: ${msg}`);
+        setIsErrorStatus(true);
       }
-    } catch (e) {
-      console.warn('Failed to load custom data from localStorage', e);
-    }
-  }, []);
+    },
+    [components, selectedComponent, toast]
+  );
 
-  // Handler: Add New Component to Library
-  const handleAddComponent = useCallback((newComp: KitComponent) => {
-    setComponents((prev) => {
-      const updated = [...prev, newComp];
+  // Handler: Add Custom Code Case / Scenario (With DB Sync & Toast)
+  const handleAddCustomCase = useCallback(
+    async (newCase: CodeVariation) => {
+      const loadingId = toast.loading(
+        'Menyimpan Kasus ke Database...',
+        `Menyimpan skenario "${newCase.title}".`
+      );
+
       try {
-        const customOnly = updated.filter((c) => c.isCustom);
-        localStorage.setItem(STORAGE_CUSTOM_COMPONENTS, JSON.stringify(customOnly));
-      } catch (err) {
-        console.warn('Failed to persist custom components', err);
-      }
-      return updated;
-    });
-    setStatusMessage(`Added "${newComp.name}" to ${newComp.category.toUpperCase()} Library`);
-    setIsErrorStatus(false);
-  }, []);
+        const res = await saveCodeVariationAction(newCase);
+        toast.dismissToast(loadingId);
 
-  // Handler: Delete Custom Component
-  const handleDeleteComponent = useCallback((componentId: string) => {
-    setComponents((prev) => {
-      const updated = prev.filter((c) => c.id !== componentId);
+        if (res.success) {
+          toast.success(
+            'Kasus Kode Berhasil Disimpan',
+            res.message || `Skenario "${newCase.title}" berhasil disimpan ke database.`
+          );
+
+          setVariations((prev) => {
+            const updated = [newCase, ...prev];
+            try {
+              localStorage.setItem(STORAGE_ALL_VARIATIONS, JSON.stringify(updated));
+            } catch (err) {
+              console.warn('Failed to persist variations', err);
+            }
+            return updated;
+          });
+
+          setSelectedVariation(newCase);
+          setStatusMessage(`Disimpan ke DB: "${newCase.title}"`);
+          setIsErrorStatus(false);
+        } else {
+          toast.error(
+            'Gagal Menyimpan Kasus Kode',
+            res.error || 'Terjadi kesalahan saat menyimpan kasus kode ke database.'
+          );
+          setStatusMessage(`Gagal simpan DB: ${res.error}`);
+          setIsErrorStatus(true);
+        }
+      } catch (err: unknown) {
+        toast.dismissToast(loadingId);
+        const msg = err instanceof Error ? err.message : 'Koneksi database gagal';
+        toast.error('Gagal Menyimpan Kasus Kode', msg);
+        setStatusMessage(`Error DB: ${msg}`);
+        setIsErrorStatus(true);
+      }
+    },
+    [toast]
+  );
+
+  // Handler: Update / Rename Code Case or Case Files (With DB Sync & Toast)
+  const handleUpdateCase = useCallback(
+    async (updatedCase: CodeVariation) => {
+      // Optimistically update in-memory state & localStorage
+      setVariations((prev) => {
+        const updated = prev.map((v) => (v.id === updatedCase.id ? updatedCase : v));
+        try {
+          localStorage.setItem(STORAGE_ALL_VARIATIONS, JSON.stringify(updated));
+        } catch (err) {
+          console.warn('Failed to persist variations', err);
+        }
+        return updated;
+      });
+
+      setSelectedVariation((curr) => (curr?.id === updatedCase.id ? updatedCase : curr));
+
       try {
-        const customOnly = updated.filter((c) => c.isCustom);
-        localStorage.setItem(STORAGE_CUSTOM_COMPONENTS, JSON.stringify(customOnly));
-      } catch (err) {
-        console.warn('Failed to persist custom components', err);
+        const res = await updateCodeVariationAction(updatedCase);
+        if (res.success) {
+          toast.success(
+            'Perubahan Berhasil Disimpan',
+            res.message || `Skenario "${updatedCase.title}" berhasil diperbarui di database.`
+          );
+          setStatusMessage(`Disimpan ke DB: "${updatedCase.title}"`);
+          setIsErrorStatus(false);
+        } else {
+          toast.error(
+            'Gagal Menyimpan ke Database',
+            res.error || 'Terjadi kesalahan saat memperbarui database.'
+          );
+          setStatusMessage(`Gagal update DB: ${res.error}`);
+          setIsErrorStatus(true);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Koneksi database gagal';
+        toast.error('Gagal Menyimpan ke Database', msg);
+        setStatusMessage(`Error DB: ${msg}`);
+        setIsErrorStatus(true);
       }
-      return updated;
-    });
+    },
+    [toast]
+  );
 
-    // Remove from active architecture if present
-    setArchitecture((prev) => {
-      const cleanSlots = (slots: (KitComponent | null)[]) =>
-        slots.map((c) => (c?.id === componentId ? null : c));
+  // Handler: Delete Custom Code Case (With DB Sync & Toast)
+  const handleDeleteCustomCase = useCallback(
+    async (caseId: string) => {
+      const target = variations.find((v) => v.id === caseId);
+      const targetTitle = target?.title || caseId;
+      const loadingId = toast.loading(
+        'Menghapus Kasus dari Database...',
+        `Menghapus "${targetTitle}".`
+      );
 
-      return {
-        inputs: cleanSlots(prev.inputs),
-        boards: cleanSlots(prev.boards),
-        outputs: cleanSlots(prev.outputs),
-        inputConditioners: cleanSlots(prev.inputConditioners || []),
-        outputConditioners: cleanSlots(prev.outputConditioners || []),
-        wires: (prev.wires || []).filter((w) => w.conditioner?.id !== componentId),
-      };
-    });
-
-    if (selectedComponent?.id === componentId) {
-      setSelectedComponent(null);
-    }
-    setStatusMessage('Deleted custom component from library');
-  }, [selectedComponent]);
-
-  // Handler: Add Custom Code Case / Scenario
-  const handleAddCustomCase = useCallback((newCase: CodeVariation) => {
-    setVariations((prev) => {
-      const updated = [newCase, ...prev];
       try {
-        localStorage.setItem(STORAGE_ALL_VARIATIONS, JSON.stringify(updated));
-      } catch (err) {
-        console.warn('Failed to persist variations', err);
+        const res = await deleteCodeVariationAction(caseId);
+        toast.dismissToast(loadingId);
+
+        if (res.success) {
+          toast.success(
+            'Kasus Kode Berhasil Dihapus',
+            res.message || `Skenario "${targetTitle}" berhasil dihapus dari database.`
+          );
+
+          setVariations((prev) => {
+            const updated = prev.filter((v) => v.id !== caseId);
+            try {
+              localStorage.setItem(STORAGE_ALL_VARIATIONS, JSON.stringify(updated));
+            } catch (err) {
+              console.warn('Failed to persist variations', err);
+            }
+            return updated;
+          });
+
+          setSelectedVariation((curr) =>
+            curr?.id === caseId ? variations.find((v) => v.id !== caseId) || null : curr
+          );
+          setStatusMessage(`Dihapus dari DB: "${targetTitle}"`);
+          setIsErrorStatus(false);
+        } else {
+          toast.error(
+            'Gagal Menghapus Kasus Kode',
+            res.error || 'Terjadi kesalahan saat menghapus kasus kode dari database.'
+          );
+          setStatusMessage(`Gagal hapus DB: ${res.error}`);
+          setIsErrorStatus(true);
+        }
+      } catch (err: unknown) {
+        toast.dismissToast(loadingId);
+        const msg = err instanceof Error ? err.message : 'Koneksi database gagal';
+        toast.error('Gagal Menghapus Kasus Kode', msg);
+        setStatusMessage(`Error DB: ${msg}`);
+        setIsErrorStatus(true);
       }
-      return updated;
-    });
-
-    setSelectedVariation(newCase);
-    setStatusMessage(`Created Custom Case: "${newCase.title}"`);
-    setIsErrorStatus(false);
-  }, []);
-
-  // Handler: Update / Rename Code Case or Case Files
-  const handleUpdateCase = useCallback((updatedCase: CodeVariation) => {
-    setVariations((prev) => {
-      const updated = prev.map((v) => (v.id === updatedCase.id ? updatedCase : v));
-      try {
-        localStorage.setItem(STORAGE_ALL_VARIATIONS, JSON.stringify(updated));
-      } catch (err) {
-        console.warn('Failed to persist variations', err);
-      }
-      return updated;
-    });
-
-    setSelectedVariation((curr) => (curr?.id === updatedCase.id ? updatedCase : curr));
-    setStatusMessage(`Updated Case: "${updatedCase.title}"`);
-    setIsErrorStatus(false);
-  }, []);
-
-  // Handler: Delete Custom Code Case
-  const handleDeleteCustomCase = useCallback((caseId: string) => {
-    setVariations((prev) => {
-      const updated = prev.filter((v) => v.id !== caseId);
-      try {
-        localStorage.setItem(STORAGE_ALL_VARIATIONS, JSON.stringify(updated));
-      } catch (err) {
-        console.warn('Failed to persist variations', err);
-      }
-      return updated;
-    });
-
-    setSelectedVariation((curr) => (curr?.id === caseId ? CODE_VARIATIONS[0] : curr));
-    setStatusMessage('Deleted custom code case');
-  }, []);
+    },
+    [variations, toast]
+  );
 
   // Drag Handlers
   const handleDragStart = useCallback((component: KitComponent) => {
@@ -551,4 +761,3 @@ export default function Home() {
     </div>
   );
 }
-
