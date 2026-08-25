@@ -78,7 +78,7 @@ async function main() {
   console.log("✅ Seeded conditioner components.");
 
   // 3. SEED INPUT COMPONENTS
-  await prisma.component.create({
+  const button = await prisma.component.create({
     data: {
       id: "tactile-button",
       name: "Tactile Button",
@@ -150,7 +150,7 @@ async function main() {
   console.log("✅ Seeded input components.");
 
   // 4. SEED BOARD COMPONENTS
-  await prisma.component.create({
+  const esp32 = await prisma.component.create({
     data: {
       id: "esp32",
       name: "ESP32 Core",
@@ -205,7 +205,7 @@ async function main() {
   console.log("✅ Seeded board components.");
 
   // 5. SEED OUTPUT COMPONENTS (with self-ref requiredConditionerId)
-  await prisma.component.create({
+  const led = await prisma.component.create({
     data: {
       id: "led",
       name: "LED (Red / Blue)",
@@ -241,7 +241,7 @@ async function main() {
     },
   });
 
-  await prisma.component.create({
+  const relay = await prisma.component.create({
     data: {
       id: "relay",
       name: "1-Channel Relay",
