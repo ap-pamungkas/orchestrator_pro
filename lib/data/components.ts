@@ -72,7 +72,7 @@ export async function deleteComponent(id: string) {
   });
 
   if (dependents.length > 0) {
-    const names = dependents.map((d) => d.name).join(", ");
+    const names = dependents.map((d: { name: string }) => d.name).join(", ");
     throw new Error(
       `Cannot delete component '${id}' because it is required as a conditioner by: ${names}`
     );
