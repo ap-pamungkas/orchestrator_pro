@@ -1,5 +1,4 @@
 import { KitComponent } from '@/types';
-
 export const KIT_COMPONENTS: KitComponent[] = [
   // INPUT COMPONENTS
   {

@@ -49,7 +49,7 @@ async function main() {
     },
   });
 
-  const resistor10k = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "resistor-10k",
       name: "10kΩ Resistor",
@@ -62,7 +62,7 @@ async function main() {
     },
   });
 
-  const tc1508a = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "driver-tc1508a",
       name: "TC1508A Motor Driver",
@@ -78,7 +78,7 @@ async function main() {
   console.log("✅ Seeded conditioner components.");
 
   // 3. SEED INPUT COMPONENTS
-  const button = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "tactile-button",
       name: "Tactile Button",
@@ -98,7 +98,7 @@ async function main() {
     },
   });
 
-  const potentio = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "potentio",
       name: "Potentiometer",
@@ -119,7 +119,7 @@ async function main() {
     },
   });
 
-  const dht22 = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "dht22",
       name: "DHT22 Sensor",
@@ -133,7 +133,7 @@ async function main() {
     },
   });
 
-  const infraRed = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "infra-red",
       name: "IR Motion Switch",
@@ -150,7 +150,7 @@ async function main() {
   console.log("✅ Seeded input components.");
 
   // 4. SEED BOARD COMPONENTS
-  const esp32 = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "esp32",
       name: "ESP32 Core",
@@ -163,7 +163,7 @@ async function main() {
     },
   });
 
-  const esp32Cam = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "esp32-cam",
       name: "ESP32-CAM",
@@ -176,7 +176,7 @@ async function main() {
     },
   });
 
-  const arduino = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "arduino-uno",
       name: "Arduino Uno R3",
@@ -189,7 +189,7 @@ async function main() {
     },
   });
 
-  const rpiPico = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "rpi-pico",
       name: "Raspberry Pi Pico",
@@ -205,7 +205,7 @@ async function main() {
   console.log("✅ Seeded board components.");
 
   // 5. SEED OUTPUT COMPONENTS (with self-ref requiredConditionerId)
-  const led = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "led",
       name: "LED (Red / Blue)",
@@ -227,7 +227,7 @@ async function main() {
     },
   });
 
-  const buzzer = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "buzzer",
       name: "Active Buzzer",
@@ -241,7 +241,7 @@ async function main() {
     },
   });
 
-  const relay = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "relay",
       name: "1-Channel Relay",
@@ -255,7 +255,7 @@ async function main() {
     },
   });
 
-  const servo = await prisma.component.create({
+  await prisma.component.create({
     data: {
       id: "servo",
       name: "SG90 Micro Servo",
