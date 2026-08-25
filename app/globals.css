@@ -46,7 +46,7 @@ body {
   background: #94a3b8;
 }
 
-/* Active Signal Cable Flow Animations */
+/* Active Signal Cable Flow Animations (Moving Dot-Dot flow) */
 @keyframes cable-pulse-down {
   from {
     stroke-dashoffset: 16;
@@ -59,11 +59,13 @@ body {
 .cable-flow-active-blue {
   stroke-dasharray: 4, 4;
   animation: cable-pulse-down 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.6));
 }
 
 .cable-flow-active-emerald {
   stroke-dasharray: 4, 4;
   animation: cable-pulse-down 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(5, 150, 105, 0.6));
 }
 
 /* High-Contrast 500ms LED Pulse (Alternating Bright Glow / Dim) */

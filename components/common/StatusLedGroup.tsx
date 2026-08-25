@@ -13,19 +13,19 @@ interface LedColorConfig {
 }
 
 const LED_CONFIGS: LedColorConfig[] = [
-  // 1. Putih (White)
+  // 1. Biru Terang (Bright Blue - Solid Glow, No Pulse)
+  {
+    id: 'blue',
+    label: 'Blue LED',
+    dimClass: 'bg-blue-950/60 border border-blue-900/50',
+    activeClass: 'bg-blue-400 border-blue-300 shadow-[0_0_12px_#38bdf8,0_0_22px_rgba(56,189,248,0.95)]',
+  },
+  // 2. Putih (White)
   {
     id: 'white',
     label: 'White LED',
     dimClass: 'bg-zinc-600/40 border border-zinc-700/60',
     activeClass: 'bg-white border-white shadow-[0_0_10px_#ffffff,0_0_18px_rgba(255,255,255,0.9)] animate-led-pulse',
-  },
-  // 2. Abu-abu (Gray)
-  {
-    id: 'gray',
-    label: 'Gray LED',
-    dimClass: 'bg-zinc-700/50 border border-zinc-800',
-    activeClass: 'bg-zinc-200 border-zinc-100 shadow-[0_0_10px_#cbd5e1,0_0_18px_rgba(203,213,225,0.8)] animate-led-pulse',
   },
   // 3. Merah (Red)
   {
@@ -65,7 +65,7 @@ export const StatusLedGroup: React.FC<StatusLedGroupProps> = ({
   return (
     <div
       className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-zinc-950/90 border border-zinc-800 shadow-inner ring-1 ring-zinc-900/60 backdrop-blur-xs ${className}`}
-      title="Hardware Status LEDs (Click to activate 500ms pulse)"
+      title="Hardware Status LEDs (Click to activate)"
     >
       {LED_CONFIGS.map((led, idx) => {
         const isSelected = selectedIndex === idx;
@@ -78,7 +78,7 @@ export const StatusLedGroup: React.FC<StatusLedGroupProps> = ({
             className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full cursor-pointer transition-all duration-300 focus:outline-none ${
               isSelected ? led.activeClass : `${led.dimClass} hover:opacity-75 hover:scale-110`
             }`}
-            title={`${led.label} ${isSelected ? '(Active 500ms Pulse)' : '(Click to pulse)'}`}
+            title={`${led.label} ${isSelected ? (led.id === 'blue' ? '(Active Solid Glow)' : '(Active 500ms Pulse)') : '(Click to activate)'}`}
           />
         );
       })}

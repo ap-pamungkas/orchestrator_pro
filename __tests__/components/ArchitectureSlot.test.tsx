@@ -88,4 +88,46 @@ describe('ArchitectureSlot Component', () => {
     fireEvent.click(removeBtn);
     expect(handleRemove).toHaveBeenCalledWith('input', 0);
   });
+
+  it('should trigger onStartWire when bottom port is clicked', () => {
+    const handleStartWire = vi.fn();
+    render(
+      <ArchitectureSlot
+        category="input"
+        slotIndex={0}
+        component={mockButton}
+        selectedComponent={null}
+        draggedCategory={null}
+        onDropComponent={vi.fn()}
+        onSelectComponent={vi.fn()}
+        onRemoveComponent={vi.fn()}
+        onStartWire={handleStartWire}
+      />
+    );
+
+    const port = screen.getByTitle('Tarik garis (Drag to connect) ke Device / Board');
+    fireEvent.mouseDown(port);
+    expect(handleStartWire).toHaveBeenCalledWith('input', 0, expect.any(Object));
+  });
+
+  it('should trigger onCompleteWire when top port is dropped onto', () => {
+    const handleCompleteWire = vi.fn();
+    render(
+      <ArchitectureSlot
+        category="board"
+        slotIndex={1}
+        component={null}
+        selectedComponent={null}
+        draggedCategory={null}
+        onDropComponent={vi.fn()}
+        onSelectComponent={vi.fn()}
+        onRemoveComponent={vi.fn()}
+        onCompleteWire={handleCompleteWire}
+      />
+    );
+
+    const topPort = screen.getByTitle('Input Port (Drop wire to connect)');
+    fireEvent.mouseUp(topPort);
+    expect(handleCompleteWire).toHaveBeenCalledWith('board', 1);
+  });
 });

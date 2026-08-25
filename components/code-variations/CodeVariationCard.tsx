@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { KitComponent, CodeVariation, ArchitectureState, CodeFile } from '@/types';
+import { KitComponent, CodeVariation, ArchitectureState, CodeFile, AppMode } from '@/types';
 import { highlightCppCode } from './highlightCpp';
 import { StatusLedGroup } from '../common/StatusLedGroup';
-import { AddFileModal } from './AddFileModal';
-import { RenameFileModal } from './RenameFileModal';
 import { AddCaseModal } from './AddCaseModal';
 import { EditCaseModal } from './EditCaseModal';
 import {
@@ -20,7 +18,6 @@ import {
   UndoIcon,
   MaximizeIcon,
   MinimizeIcon,
-  PlusIcon,
   Trash2Icon,
   XIcon,
   Edit3Icon,
@@ -41,6 +38,7 @@ interface CodeVariationCardProps {
   onAddCustomCase: (newCase: CodeVariation) => void;
   onUpdateCase: (updatedCase: CodeVariation) => void;
   onDeleteCustomCase: (caseId: string) => void;
+  mode?: AppMode;
 }
 
 export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
@@ -54,16 +52,14 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
   onAddCustomCase,
   onUpdateCase,
   onDeleteCustomCase,
+  mode,
 }) => {
   const [isVariationsOpen, setIsVariationsOpen] = useState<boolean>(true);
 
-  // Modals state
-  const [isAddFileModalOpen, setIsAddFileModalOpen] = useState(false);
-  const [targetCaseForNewFile, setTargetCaseForNewFile] = useState<CodeVariation | null>(null);
-
-  const [isRenameFileModalOpen, setIsRenameFileModalOpen] = useState(false);
-  const [fileToRename, setFileToRename] = useState<string>('main.cpp');
-  const [targetCaseForRenameFile, setTargetCaseForRenameFile] = useState<CodeVariation | null>(null);
+  // Inline Rename state (Windows Explorer / VS Code style)
+  const [renamingTarget, setRenamingTarget] = useState<{ variationId: string; oldFileName: string } | null>(null);
+  const [inlineRenameValue, setInlineRenameValue] = useState<string>('');
+  const inlineRenameInputRef = useRef<HTMLInputElement>(null);
 
   const [isAddCaseModalOpen, setIsAddCaseModalOpen] = useState(false);
   const [isEditCaseModalOpen, setIsEditCaseModalOpen] = useState(false);
@@ -71,7 +67,12 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
 
   // Multi-File Project State per Variation ID: Record<variationId, CodeFile[]>
   const [filesByVariation, setFilesByVariation] = useState<Record<string, CodeFile[]>>({});
-  const [activeFileName, setActiveFileName] = useState<string>('main.cpp');
+  const [activeFileName, setActiveFileName] = useState<string>('sketch.ino');
+
+  // Inline File Creation state (Windows Explorer / VS Code style)
+  const [creatingFileInCaseId, setCreatingFileInCaseId] = useState<string | null>(null);
+  const [newInlineFileName, setNewInlineFileName] = useState<string>('');
+  const inlineInputRef = useRef<HTMLInputElement>(null);
 
   // Track folder expansion states in explorer: Record<variationId, boolean>
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -115,7 +116,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
   // Helper to resolve current file list for a specific variation
   const getVariationFiles = useCallback(
     (variation: CodeVariation | null): CodeFile[] => {
-      if (!variation) return [{ name: 'main.cpp', content: '' }];
+      if (!variation) return [{ name: 'sketch.ino', content: '' }];
       if (filesByVariation[variation.id] && filesByVariation[variation.id].length > 0) {
         return filesByVariation[variation.id];
       }
@@ -124,7 +125,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
       }
       return [
         {
-          name: 'main.cpp',
+          name: 'sketch.ino',
           content: variation.sourceCode,
         },
       ];
@@ -153,7 +154,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
       if (currentVariation.id !== currentVariationIdRef.current) {
         currentVariationIdRef.current = currentVariation.id;
         const initialFiles = getVariationFiles(currentVariation);
-        const firstFile = initialFiles[0] || { name: 'main.cpp', content: currentVariation.sourceCode };
+        const firstFile = initialFiles[0] || { name: 'sketch.ino', content: currentVariation.sourceCode };
 
         setActiveFileName(firstFile.name);
         setCurrentCode(firstFile.content);
@@ -162,7 +163,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
     } else {
       currentVariationIdRef.current = null;
       setCurrentCode('');
-      setActiveFileName('main.cpp');
+      setActiveFileName('sketch.ino');
     }
   }, [currentVariation, getVariationFiles]);
 
@@ -236,100 +237,155 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
     setSaveStatus(unsavedFiles[file.name] ? 'unsaved' : 'saved');
   };
 
-  // Add a new file to a specific case folder
-  const handleAddNewFile = (newFileName: string, initialContent: string = '') => {
-    const targetCase = targetCaseForNewFile || currentVariation;
-    if (!targetCase) return;
+  // Commit inline new file (Windows Explorer / VS Code style on Enter or Blur)
+  const handleCommitInlineNewFile = (variation: CodeVariation) => {
+    const rawName = newInlineFileName.trim();
+    if (!rawName) {
+      setCreatingFileInCaseId(null);
+      setNewInlineFileName('');
+      return;
+    }
 
+    let finalFileName = rawName;
+    if (!finalFileName.includes('.')) {
+      finalFileName = `${finalFileName}.ino`;
+    }
+
+    let defaultContent = '// Arduino Sketch File\n';
+    if (finalFileName.endsWith('.ino')) {
+      defaultContent = `#include <Arduino.h>\n\n// TODO: Implement sketch logic\n`;
+    } else if (finalFileName.endsWith('.h') || finalFileName.endsWith('.hpp')) {
+      const guardName = finalFileName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+      defaultContent = `#ifndef ${guardName}\n#define ${guardName}\n\n#include <Arduino.h>\n\n// TODO: Declare header definitions\n\n#endif // ${guardName}\n`;
+    } else if (finalFileName.endsWith('.cpp')) {
+      defaultContent = `#include <Arduino.h>\n\n// TODO: Implement logic\n`;
+    }
+
+    const existingList = getVariationFiles(variation);
     const newFile: CodeFile = {
-      name: newFileName,
-      content: initialContent,
+      name: finalFileName,
+      content: defaultContent,
     };
 
-    const existingList = getVariationFiles(targetCase);
-    const updatedList = existingList.some((f) => f.name.toLowerCase() === newFileName.toLowerCase())
-      ? existingList.map((f) => (f.name.toLowerCase() === newFileName.toLowerCase() ? newFile : f))
+    const updatedList = existingList.some((f) => f.name.toLowerCase() === finalFileName.toLowerCase())
+      ? existingList.map((f) => (f.name.toLowerCase() === finalFileName.toLowerCase() ? newFile : f))
       : [...existingList, newFile];
 
     setFilesByVariation((prev) => ({
       ...prev,
-      [targetCase.id]: updatedList,
+      [variation.id]: updatedList,
     }));
 
-    // If active case, switch tab to new file
-    if (currentVariation?.id === targetCase.id) {
-      setActiveFileName(newFileName);
-      setCurrentCode(initialContent);
+    if (currentVariation?.id === variation.id) {
+      setActiveFileName(finalFileName);
+      setCurrentCode(defaultContent);
+    } else {
+      onSelectVariation(variation);
+      setActiveFileName(finalFileName);
+      setCurrentCode(defaultContent);
     }
 
-    setUnsavedFiles((prev) => ({ ...prev, [newFileName]: false }));
+    setUnsavedFiles((prev) => ({ ...prev, [finalFileName]: false }));
     setSaveStatus('just_saved');
     setTimeout(() => setSaveStatus('saved'), 2000);
 
-    // Make sure folder is expanded
-    setExpandedFolders((prev) => ({ ...prev, [targetCase.id]: true }));
-
-    // Immediately commit the new file into the Case
     onUpdateCase({
-      ...targetCase,
+      ...variation,
       files: updatedList,
-      sourceCode: updatedList.find((f) => f.name === 'main.cpp')?.content || targetCase.sourceCode,
+      sourceCode: updatedList.find((f) => f.name === 'sketch.ino' || f.name === 'main.cpp')?.content || variation.sourceCode,
     });
+
+    setCreatingFileInCaseId(null);
+    setNewInlineFileName('');
   };
 
-  // Rename a file in a specific case folder
-  const handleRenameFile = (oldName: string, newName: string) => {
-    const targetCase = targetCaseForRenameFile || currentVariation;
-    if (!targetCase || oldName === newName) return;
+  const handleCancelInlineNewFile = () => {
+    setCreatingFileInCaseId(null);
+    setNewInlineFileName('');
+  };
 
-    const existingList = getVariationFiles(targetCase);
+  // Auto-focus input when inline file creation starts
+  useEffect(() => {
+    if (creatingFileInCaseId && inlineInputRef.current) {
+      inlineInputRef.current.focus();
+    }
+  }, [creatingFileInCaseId]);
+
+  // Auto-focus and select input when inline file rename starts
+  useEffect(() => {
+    if (renamingTarget && inlineRenameInputRef.current) {
+      inlineRenameInputRef.current.focus();
+      inlineRenameInputRef.current.select();
+    }
+  }, [renamingTarget]);
+
+  // Start inline rename (Windows Explorer / VS Code style)
+  const handleStartInlineRename = (variation: CodeVariation, fileName: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setRenamingTarget({ variationId: variation.id, oldFileName: fileName });
+    setInlineRenameValue(fileName);
+  };
+
+  // Commit inline rename on Enter or Blur
+  const handleCommitInlineRename = (variation: CodeVariation) => {
+    if (!renamingTarget || renamingTarget.variationId !== variation.id) return;
+    const oldName = renamingTarget.oldFileName;
+    const rawNewName = inlineRenameValue.trim();
+
+    if (!rawNewName || rawNewName === oldName) {
+      setRenamingTarget(null);
+      setInlineRenameValue('');
+      return;
+    }
+
+    let finalNewName = rawNewName;
+    if (!finalNewName.includes('.')) {
+      const originalExt = oldName.includes('.') ? oldName.substring(oldName.lastIndexOf('.')) : '.ino';
+      finalNewName = `${finalNewName}${originalExt}`;
+    }
+
+    const existingList = getVariationFiles(variation);
     const updatedList = existingList.map((f) =>
-      f.name === oldName ? { ...f, name: newName } : f
+      f.name === oldName ? { ...f, name: finalNewName } : f
     );
 
     setFilesByVariation((prev) => ({
       ...prev,
-      [targetCase.id]: updatedList,
+      [variation.id]: updatedList,
     }));
 
-    // Transfer unsaved state if any
     setUnsavedFiles((prev) => {
       const copy = { ...prev };
       if (copy[oldName]) {
-        copy[newName] = copy[oldName];
+        copy[finalNewName] = copy[oldName];
         delete copy[oldName];
       }
       return copy;
     });
 
-    if (currentVariation?.id === targetCase.id && activeFileName === oldName) {
-      setActiveFileName(newName);
+    if (currentVariation?.id === variation.id && activeFileName === oldName) {
+      setActiveFileName(finalNewName);
     }
 
     setSaveStatus('just_saved');
     setTimeout(() => setSaveStatus('saved'), 2000);
 
-    // Persist immediately to the Case in app state and localStorage
     onUpdateCase({
-      ...targetCase,
+      ...variation,
       files: updatedList,
-      sourceCode: updatedList.find((f) => f.name === 'main.cpp' || f.name === newName)?.content || targetCase.sourceCode,
+      sourceCode: updatedList.find((f) => f.name === 'sketch.ino' || f.name === 'main.cpp' || f.name === finalNewName)?.content || variation.sourceCode,
     });
+
+    setRenamingTarget(null);
+    setInlineRenameValue('');
   };
 
-  // Open Add File Modal for a specific case folder
-  const handleOpenAddFileForCase = (variation: CodeVariation, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setTargetCaseForNewFile(variation);
-    setIsAddFileModalOpen(true);
-  };
-
-  // Open Rename Modal for specific file in a case folder
-  const handleOpenRenameModal = (variation: CodeVariation, fileName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setTargetCaseForRenameFile(variation);
-    setFileToRename(fileName);
-    setIsRenameFileModalOpen(true);
+  const handleCancelInlineRename = () => {
+    setRenamingTarget(null);
+    setInlineRenameValue('');
   };
 
   // Delete a file from a specific case folder
@@ -362,7 +418,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
     onUpdateCase({
       ...variation,
       files: updatedList,
-      sourceCode: updatedList.find((f) => f.name === 'main.cpp')?.content || variation.sourceCode,
+      sourceCode: updatedList.find((f) => f.name === 'sketch.ino' || f.name === 'main.cpp')?.content || variation.sourceCode,
     });
   };
 
@@ -395,11 +451,11 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
     }));
 
     // Commit and save all files permanently into this Case in app state & localStorage
-    const mainCppFile = updatedList.find((f) => f.name === 'main.cpp');
+    const mainSketchFile = updatedList.find((f) => f.name === 'sketch.ino' || f.name === 'main.cpp');
     const updatedCase: CodeVariation = {
       ...currentVariation,
       files: updatedList,
-      sourceCode: mainCppFile ? mainCppFile.content : currentCode,
+      sourceCode: mainSketchFile ? mainSketchFile.content : currentCode,
     };
     onUpdateCase(updatedCase);
 
@@ -412,7 +468,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
   // Revert active file to default template
   const handleRevert = useCallback(() => {
     if (!currentVariation) return;
-    if (activeFileName === 'main.cpp') {
+    if (activeFileName === 'sketch.ino' || activeFileName === 'main.cpp') {
       setCurrentCode(currentVariation.sourceCode);
       handleCodeChange(currentVariation.sourceCode);
     }
@@ -435,8 +491,10 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
     const link = document.createElement('a');
     link.href = url;
 
-    // If main.cpp, download as .ino for Arduino IDE compatibility
-    const extName = activeFileName === 'main.cpp' ? `${currentVariation.id}_sketch.ino` : activeFileName;
+    // Download with active file name or .ino extension
+    const extName = (activeFileName === 'sketch.ino' || activeFileName === 'main.cpp')
+      ? `${currentVariation.id}_sketch.ino`
+      : activeFileName;
     link.download = extName;
     document.body.appendChild(link);
     link.click();
@@ -507,51 +565,48 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
             <StatusLedGroup />
           </div>
 
-          {/* Right Side Header Controls */}
-          <div className="flex items-center gap-2">
-            {isArchitectureComplete && (
-              <>
-                <span className="text-[9px] font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 font-semibold">
-                  {primaryInput?.name || 'Input'} ➔ ESP32 ➔ {architecture.outputs.find(Boolean)?.name || 'Output'}
-                </span>
+          {/* Right Side Header Controls (Hidden in Educator Mode, shown in Developer Mode) */}
+          {mode !== 'educator' && (
+            <div className="flex items-center gap-2">
+              {isArchitectureComplete && (
+                <>
+                  <span className="text-[9px] font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 font-semibold">
+                    {primaryInput?.name || 'Input'} ➔ ESP32 ➔ {architecture.outputs.find(Boolean)?.name || 'Output'}
+                  </span>
 
-                {/* Explorer Drawer Toggle Button */}
+                  {/* Explorer Drawer Toggle Button */}
+                  <button
+                    onClick={() => setIsVariationsOpen(!isVariationsOpen)}
+                    className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-white hover:bg-zinc-100 text-[10px] font-medium text-zinc-700 border border-zinc-200 transition-colors cursor-pointer shadow-2xs"
+                    title={isVariationsOpen ? 'Collapse Explorer' : 'Expand Project Explorer'}
+                  >
+                    <LayersIcon className="w-3 h-3 text-blue-600" />
+                    <span>{isVariationsOpen ? 'Hide Explorer' : `Explorer (${availableVariations.length} Cases)`}</span>
+                    {isVariationsOpen ? (
+                      <ChevronRightIcon className="w-3 h-3 text-zinc-400" />
+                    ) : (
+                      <ChevronDownIcon className="w-3 h-3 text-zinc-400" />
+                    )}
+                  </button>
+                </>
+              )}
+
+              {/* Expand / Restore Button */}
+              {onToggleExpand && (
                 <button
-                  onClick={() => setIsVariationsOpen(!isVariationsOpen)}
-                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-white hover:bg-zinc-100 text-[10px] font-medium text-zinc-700 border border-zinc-200 transition-colors cursor-pointer shadow-2xs"
-                  title={isVariationsOpen ? 'Collapse Explorer' : 'Expand Project Explorer'}
+                  onClick={onToggleExpand}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white hover:bg-zinc-100 text-[10px] font-medium text-zinc-600 border border-zinc-200 transition-colors cursor-pointer shadow-2xs"
+                  title={isExpanded ? 'Restore card size' : 'Expand Code Editor to full canvas'}
                 >
-                  <LayersIcon className="w-3 h-3 text-blue-600" />
-                  <span>{isVariationsOpen ? 'Hide Explorer' : `Explorer (${availableVariations.length} Cases)`}</span>
-                  {isVariationsOpen ? (
-                    <ChevronRightIcon className="w-3 h-3 text-zinc-400" />
+                  {isExpanded ? (
+                    <MinimizeIcon className="w-3 h-3" />
                   ) : (
-                    <ChevronDownIcon className="w-3 h-3 text-zinc-400" />
+                    <MaximizeIcon className="w-3 h-3" />
                   )}
                 </button>
-              </>
-            )}
-
-            {/* Expand / Restore Button */}
-            {onToggleExpand && (
-              <button
-                onClick={onToggleExpand}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white hover:bg-zinc-100 text-[10px] font-medium text-zinc-600 border border-zinc-200 transition-colors cursor-pointer shadow-2xs"
-                title={isExpanded ? 'Restore card size' : 'Expand Code Editor to full canvas'}
-              >
-                {isExpanded ? (
-                  <>
-                    <MinimizeIcon className="w-3 h-3" />
-
-                  </>
-                ) : (
-                  <>
-                    <MaximizeIcon className="w-3 h-3" />
-                  </>
-                )}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Card Body */}
@@ -639,13 +694,15 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                         <FolderOpenIcon className="w-3.5 h-3.5 text-blue-600" />
                         <span>CASE EXPLORER (0)</span>
                       </div>
-                      <button
-                        onClick={() => setIsAddCaseModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] transition-colors cursor-pointer"
-                      >
-                        <FolderPlusIcon className="w-3 h-3" />
-                        <span>+ Case</span>
-                      </button>
+                      {mode !== 'educator' && (
+                        <button
+                          onClick={() => setIsAddCaseModalOpen(true)}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] transition-colors cursor-pointer"
+                        >
+                          <FolderPlusIcon className="w-3 h-3" />
+                          <span>+ Case</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-zinc-400 my-auto">
@@ -658,13 +715,15 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                       <p className="text-[10.5px] text-zinc-500 max-w-[200px] leading-snug mb-3 font-sans">
                         Pipeline {primaryInput?.name} belum memiliki skenario kode.
                       </p>
-                      <button
-                        onClick={() => setIsAddCaseModalOpen(true)}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-                      >
-                        <FolderPlusIcon className="w-3.5 h-3.5" />
-                        <span>+ Buat Case Baru</span>
-                      </button>
+                      {mode !== 'educator' && (
+                        <button
+                          onClick={() => setIsAddCaseModalOpen(true)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                          <FolderPlusIcon className="w-3.5 h-3.5" />
+                          <span>+ Buat Case Baru</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -679,12 +738,15 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                     {currentFiles.map((file) => {
                       const isActive = file.name === activeFileName;
                       const isFileUnsaved = Boolean(unsavedFiles[file.name]);
+                      const isRenamingThisTab =
+                        renamingTarget?.variationId === currentVariation?.id &&
+                        renamingTarget?.oldFileName === file.name;
 
                       return (
                         <div
                           key={file.name}
-                          onClick={() => handleSelectTab(file.name)}
-                          onDoubleClick={(e) => currentVariation && handleOpenRenameModal(currentVariation, file.name, e)}
+                          onClick={() => !isRenamingThisTab && handleSelectTab(file.name)}
+                          onDoubleClick={(e) => currentVariation && handleStartInlineRename(currentVariation, file.name, e)}
                           title={`Click to switch, double-click to rename`}
                           className={`group flex items-center gap-1.5 px-2.5 py-1 rounded-md font-mono text-[11px] transition-all cursor-pointer select-none ${isActive
                             ? 'bg-white border border-zinc-200 text-blue-700 font-semibold shadow-2xs'
@@ -694,7 +756,34 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                           <FileCodeIcon
                             className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-zinc-400'}`}
                           />
-                          <span>{file.name}</span>
+                          {isRenamingThisTab ? (
+                            <input
+                              ref={inlineRenameInputRef}
+                              type="text"
+                              value={inlineRenameValue}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setInlineRenameValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (currentVariation) {
+                                    handleCommitInlineRename(currentVariation);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  handleCancelInlineRename();
+                                }
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  if (currentVariation) handleCommitInlineRename(currentVariation);
+                                }, 100);
+                              }}
+                              className="bg-white text-zinc-900 border border-blue-400 rounded px-1 py-0.2 font-mono text-[10.5px] outline-none shadow-inner w-24"
+                            />
+                          ) : (
+                            <span>{file.name}</span>
+                          )}
 
                           {/* Unsaved Draft Indicator Dot on Tab */}
                           {isFileUnsaved && (
@@ -706,7 +795,7 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
 
                           {/* Rename Icon button */}
                           <button
-                            onClick={(e) => currentVariation && handleOpenRenameModal(currentVariation, file.name, e)}
+                            onClick={(e) => currentVariation && handleStartInlineRename(currentVariation, file.name, e)}
                             title={`Rename ${file.name}`}
                             className="opacity-0 group-hover:opacity-100 hover:opacity-100 text-zinc-400 hover:text-blue-600 p-0.5 rounded transition-all cursor-pointer"
                           >
@@ -727,78 +816,83 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                       );
                     })}
 
-                    {/* Add New File Tab Button */}
-                    <button
-                      onClick={() => currentVariation && handleOpenAddFileForCase(currentVariation)}
-                      title="Add new file to current case folder"
-                      className="flex items-center gap-1 px-2 py-1 rounded-md bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-700 border border-dashed border-zinc-300 hover:border-blue-300 font-mono text-[10.5px] transition-colors cursor-pointer"
-                    >
-                      <FilePlusIcon className="w-3 h-3" />
-                      <span>File</span>
-                    </button>
+                    {/* Add New File Tab Button (Hidden in Educator Mode) */}
+                    {mode !== 'educator' && (
+                      <button
+                        onClick={() => {
+                          if (currentVariation) {
+                            setCreatingFileInCaseId(currentVariation.id);
+                            setNewInlineFileName('');
+                            setExpandedFolders((prev) => ({ ...prev, [currentVariation.id]: true }));
+                            setIsVariationsOpen(true);
+                          }
+                        }}
+                        title="Add new file to current case folder"
+                        className="flex items-center gap-1 px-2 py-1 rounded-md bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-700 border border-dashed border-zinc-300 hover:border-blue-300 font-mono text-[10.5px] transition-colors cursor-pointer"
+                      >
+                        <FilePlusIcon className="w-3 h-3" />
+                        <span>File</span>
+                      </button>
+                    )}
 
-                    {/* Save to Case Status Indicator */}
-                    <div className="ml-2 pl-2 border-l border-zinc-200 hidden sm:block">
-                      {saveStatus === 'just_saved' ? (
-                        <span className="flex items-center gap-1 text-[9.5px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold animate-in fade-in">
-                          <CheckIcon className="w-2.5 h-2.5 text-emerald-600" /> Tersimpan ke Case!
-                        </span>
-                      ) : isCurrentFileUnsaved ? (
-                        <span className="flex items-center gap-1 text-[9.5px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Belum Disimpan ke Case
-                        </span>
-                      ) : (
-                        <span className="text-[9.5px] font-mono text-zinc-500 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Tersimpan di Case
-                        </span>
-                      )}
-                    </div>
+                    {/* Save to Case Status Indicator (Hidden in Educator Mode) */}
+                    {mode !== 'educator' && (
+                      <div className="ml-2 pl-2 border-l border-zinc-200 hidden sm:block">
+                        {saveStatus === 'just_saved' ? (
+                          <span className="flex items-center gap-1 text-[9.5px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold animate-in fade-in">
+                            <CheckIcon className="w-2.5 h-2.5 text-emerald-600" /> Tersimpan ke Case!
+                          </span>
+                        ) : isCurrentFileUnsaved ? (
+                          <span className="flex items-center gap-1 text-[9.5px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Belum Disimpan ke Case
+                          </span>
+                        ) : (
+                          <span className="text-[9.5px] font-mono text-zinc-500 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Tersimpan di Case
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Editor Action Buttons */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                    {/* Save Button */}
-                    <button
-                      onClick={handleSave}
-                      title="Simpan file ke Case ini (Ctrl+S)"
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded font-medium text-[10px] transition-all cursor-pointer shadow-2xs active:scale-95 ${isCurrentFileUnsaved
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-blue-300 animate-pulse'
-                        : 'bg-zinc-800 hover:bg-zinc-900 text-white'
-                        }`}
-                    >
-                      <SaveIcon className="w-3 h-3" />
-                      <span>Simpan</span>
-                    </button>
+                  {/* Editor Action Buttons & Explorer Toggle */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto pl-2">
+                    {mode !== 'educator' && (
+                      <>
+                        {/* Save Button */}
+                        <button
+                          onClick={handleSave}
+                          title="Simpan file ke Case ini (Ctrl+S)"
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded font-medium text-[10px] transition-all cursor-pointer shadow-2xs active:scale-95 ${isCurrentFileUnsaved
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-blue-300 animate-pulse'
+                            : 'bg-zinc-800 hover:bg-zinc-900 text-white'
+                            }`}
+                        >
+                          <SaveIcon className="w-3 h-3" />
+                          <span>Simpan</span>
+                        </button>
 
-                    {/* Revert Button */}
-                    <button
-                      onClick={handleRevert}
-                      title="Revert to original template"
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-white hover:bg-zinc-100 text-zinc-600 border border-zinc-200 text-[10px] transition-colors cursor-pointer shadow-2xs"
-                    >
-                      <UndoIcon className="w-3 h-3" />
-                      <span>Reset</span>
-                    </button>
+                        {/* Revert Button */}
+                        <button
+                          onClick={handleRevert}
+                          title="Revert to original template"
+                          className="flex items-center gap-1 px-2 py-1 rounded bg-white hover:bg-zinc-100 text-zinc-600 border border-zinc-200 text-[10px] transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <UndoIcon className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
 
-                    {/* Copy Button */}
-                    <button
-                      onClick={handleCopy}
-                      title="Copy code to clipboard"
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-white hover:bg-zinc-100 text-zinc-600 border border-zinc-200 text-[10px] transition-colors cursor-pointer shadow-2xs"
-                    >
-                      {copyFeedback ? <CheckIcon className="w-3 h-3 text-emerald-600" /> : <CopyIcon className="w-3 h-3" />}
-                      <span>{copyFeedback ? 'Copied' : 'Copy'}</span>
-                    </button>
-
-                    {/* Download Button */}
-                    <button
-                      onClick={handleDownload}
-                      title="Download active file"
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-white hover:bg-zinc-100 text-zinc-600 border border-zinc-200 text-[10px] transition-colors cursor-pointer shadow-2xs"
-                    >
-                      <DownloadIcon className="w-3 h-3" />
-                      <span>Download</span>
-                    </button>
+                        {/* Download Button */}
+                        <button
+                          onClick={handleDownload}
+                          title="Download active file"
+                          className="flex items-center gap-1 px-2 py-1 rounded bg-white hover:bg-zinc-100 text-zinc-600 border border-zinc-200 text-[10px] transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <DownloadIcon className="w-3 h-3" />
+                          <span>Download</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -841,37 +935,75 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                         className="absolute inset-0 w-full h-full p-3 pl-3 bg-transparent text-transparent caret-blue-400 font-mono text-[11.5px] leading-6 resize-none outline-none border-none custom-scrollbar whitespace-pre selection:bg-blue-500/30 selection:text-transparent"
                         placeholder="// Enter C++ code here..."
                       />
+
+                      {/* Top-Right Minimal Controls: Copy & Expand / Perkecil */}
+                      <div className="absolute top-2.5 right-3 z-20 flex items-center gap-1.5">
+                        {/* Minimalist Copy Button with seamless icon-only checkmark transition */}
+                        <button
+                          type="button"
+                          onClick={handleCopy}
+                          title={copyFeedback ? 'Copied' : 'Copy Code'}
+                          className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-900/85 hover:bg-zinc-800 border border-zinc-700/80 hover:border-zinc-600 shadow-sm transition-all cursor-pointer select-none backdrop-blur-xs active:scale-95 flex items-center justify-center"
+                        >
+                          {copyFeedback ? (
+                            <CheckIcon className="w-3.5 h-3.5 text-zinc-200 animate-in zoom-in-75 duration-150" />
+                          ) : (
+                            <CopyIcon className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {/* Expand / Perkecil Button (Icon only) */}
+                        <button
+                          type="button"
+                          onClick={() => setIsVariationsOpen(!isVariationsOpen)}
+                          title={isVariationsOpen ? 'Perluas Editor' : 'Perkecil Editor'}
+                          className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-200 bg-zinc-900/85 hover:bg-zinc-800 border border-zinc-700/80 hover:border-zinc-600 shadow-sm transition-all cursor-pointer select-none backdrop-blur-xs active:scale-95 flex items-center justify-center"
+                        >
+                          {isVariationsOpen ? (
+                            <MaximizeIcon className="w-3.5 h-3.5" />
+                          ) : (
+                            <MinimizeIcon className="w-3.5 h-3.5 text-blue-400" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Right: IDE Project Explorer (Folders = Cases, Files = Case Files) */}
-                  {isVariationsOpen && (
-                    <div className="w-[260px] lg:w-[300px] bg-zinc-50/80 border-l border-zinc-200/80 flex flex-col overflow-hidden animate-in slide-in-from-right-3 duration-200">
+                  {/* Right: IDE Project Explorer / Variations List with smooth slide transition */}
+                  <div
+                    className={`bg-zinc-50/80 flex flex-col overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${isVariationsOpen
+                      ? 'w-[260px] lg:w-[300px] opacity-100 border-l border-zinc-200/80'
+                      : 'w-0 opacity-0 border-l-0 pointer-events-none'
+                      }`}
+                  >
+                    <div className="w-[260px] lg:w-[300px] h-full flex flex-col overflow-hidden">
                       {/* Explorer Top Toolbar */}
-                      <div className="px-3 py-2 border-b border-zinc-200/80 bg-zinc-100/70 flex items-center justify-between">
+                      <div className="px-3 py-2 border-b border-zinc-200/80 bg-zinc-100/70 flex items-center justify-between flex-shrink-0">
                         <div className="flex items-center gap-1.5 text-[10.5px] font-mono font-bold text-zinc-700 uppercase tracking-wider">
                           <FolderOpenIcon className="w-3.5 h-3.5 text-blue-600" />
-                          <span>CASE EXPLORER ({availableVariations.length})</span>
+                          <span>CASE EXPLORER </span>
                         </div>
 
                         <div className="flex items-center gap-1">
-                          {/* Add New Case Folder Button */}
-                          <button
-                            onClick={() => setIsAddCaseModalOpen(true)}
-                            title={`Create new Case for ${primaryInput?.name || 'pipeline'}`}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] transition-colors cursor-pointer shadow-2xs active:scale-95"
-                          >
-                            <FolderPlusIcon className="w-3 h-3" />
-                            <span>+ Case</span>
-                          </button>
+                          {mode !== 'educator' && (
+                            <button
+                              onClick={() => setIsAddCaseModalOpen(true)}
+                              title={`Create new Case for ${primaryInput?.name || 'pipeline'}`}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] transition-colors cursor-pointer shadow-2xs active:scale-95"
+                            >
+                              <FolderPlusIcon className="w-3 h-3" />
+                              <span>+ Case</span>
+                            </button>
+                          )}
 
-                          <button
+                          {/* <button
+                            type="button"
                             onClick={() => setIsVariationsOpen(false)}
-                            className="text-zinc-400 hover:text-zinc-700 cursor-pointer p-0.5 ml-1"
-                            title="Close Explorer"
+                            className="flex items-center gap-1 p-1 rounded hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700 cursor-pointer transition-colors"
+                            title="Sembunyikan Case Explorer"
                           >
-                            ✕
-                          </button>
+                            <MaximizeIcon className="w-3 h-3" />
+                          </button> */}
                         </div>
                       </div>
 
@@ -945,52 +1077,62 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                                 <div className="flex items-center gap-1 flex-shrink-0 ml-1">
                                   {/* Custom Badge or Difficulty Tag */}
                                   {variation.isCustom ? (
-                                    <span className="text-[7.5px] px-1 py-0.2 rounded font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                    <span className="text-[7.5px] px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-800 border border-blue-200">
                                       CUSTOM
                                     </span>
                                   ) : (
                                     <span
-                                      className={`text-[7.5px] px-1 py-0.2 rounded font-medium border ${variation.difficulty === 'Beginner'
+                                      className={`text-[8px] px-1.5 py-0.5 rounded font-medium border ${variation.difficulty === 'Beginner'
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                         : variation.difficulty === 'Intermediate'
                                           ? 'bg-amber-50 text-amber-700 border-amber-200'
                                           : 'bg-purple-50 text-purple-700 border-purple-200'
                                         }`}
                                     >
-                                      {variation.difficulty[0]}
+                                      {variation.difficulty}
                                     </span>
                                   )}
 
-                                  {/* + Add File to this folder icon */}
-                                  <button
-                                    onClick={(e) => handleOpenAddFileForCase(variation, e)}
-                                    title={`Add new file inside "${variation.title}" folder`}
-                                    className="opacity-0 group-hover:opacity-100 hover:opacity-100 p-0.5 text-zinc-400 hover:text-blue-600 rounded transition-all cursor-pointer"
-                                  >
-                                    <FilePlusIcon className="w-3 h-3" />
-                                  </button>
+                                  {/* Editing tools visible in developer mode only */}
+                                  {mode !== 'educator' && (
+                                    <>
+                                      {/* + Add File to this folder icon */}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCreatingFileInCaseId(variation.id);
+                                          setNewInlineFileName('');
+                                          setExpandedFolders((prev) => ({ ...prev, [variation.id]: true }));
+                                        }}
+                                        title={`Add new file inside "${variation.title}" folder`}
+                                        className="opacity-0 group-hover:opacity-100 hover:opacity-100 p-0.5 text-zinc-400 hover:text-blue-600 rounded transition-all cursor-pointer"
+                                      >
+                                        <FilePlusIcon className="w-3 h-3" />
+                                      </button>
 
-                                  {/* Edit Case Folder icon */}
-                                  <button
-                                    onClick={(e) => handleOpenEditCase(variation, e)}
-                                    title="Rename / Edit Case Folder"
-                                    className="opacity-0 group-hover:opacity-100 hover:opacity-100 p-0.5 text-zinc-400 hover:text-blue-600 rounded transition-all cursor-pointer"
-                                  >
-                                    <Edit3Icon className="w-3 h-3" />
-                                  </button>
+                                      {/* Edit Case Folder icon */}
+                                      <button
+                                        onClick={(e) => handleOpenEditCase(variation, e)}
+                                        title="Rename / Edit Case Folder"
+                                        className="opacity-0 group-hover:opacity-100 hover:opacity-100 p-0.5 text-zinc-400 hover:text-blue-600 rounded transition-all cursor-pointer"
+                                      >
+                                        <Edit3Icon className="w-3 h-3" />
+                                      </button>
 
-                                  {/* Delete Custom Case Folder icon */}
-                                  {variation.isCustom && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDeleteCustomCase(variation.id);
-                                      }}
-                                      title="Delete Case Folder"
-                                      className="opacity-0 group-hover:opacity-100 hover:opacity-100 p-0.5 text-zinc-400 hover:text-red-600 rounded transition-all cursor-pointer"
-                                    >
-                                      <Trash2Icon className="w-3 h-3" />
-                                    </button>
+                                      {/* Delete Custom Case Folder icon */}
+                                      {variation.isCustom && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDeleteCustomCase(variation.id);
+                                          }}
+                                          title="Delete Case Folder"
+                                          className="opacity-0 group-hover:opacity-100 hover:opacity-100 p-0.5 text-zinc-400 hover:text-red-600 rounded transition-all cursor-pointer"
+                                        >
+                                          <Trash2Icon className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -1002,11 +1144,15 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                                     const isThisFileActiveInEditor =
                                       isSelectedCase && activeFileName === file.name;
                                     const isFileUnsaved = Boolean(unsavedFiles[file.name]);
+                                    const isRenamingThisFile =
+                                      renamingTarget?.variationId === variation.id &&
+                                      renamingTarget?.oldFileName === file.name;
 
                                     return (
                                       <div
                                         key={file.name}
-                                        onClick={() => handleOpenFileFromExplorer(variation, file)}
+                                        onClick={() => !isRenamingThisFile && handleOpenFileFromExplorer(variation, file)}
+                                        onDoubleClick={(e) => handleStartInlineRename(variation, file.name, e)}
                                         className={`group/file flex items-center justify-between px-2 py-1 rounded-md text-[10.5px] transition-colors cursor-pointer ${isThisFileActiveInEditor
                                           ? 'bg-blue-600 text-white font-semibold shadow-2xs'
                                           : 'hover:bg-zinc-200/60 text-zinc-700'
@@ -1027,7 +1173,33 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                                             className={`w-3.5 h-3.5 flex-shrink-0 ${isThisFileActiveInEditor ? 'text-white' : 'text-blue-600'
                                               }`}
                                           />
-                                          <span className="truncate font-mono">{file.name}</span>
+
+                                          {isRenamingThisFile ? (
+                                            <input
+                                              ref={inlineRenameInputRef}
+                                              type="text"
+                                              value={inlineRenameValue}
+                                              onClick={(e) => e.stopPropagation()}
+                                              onChange={(e) => setInlineRenameValue(e.target.value)}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleCommitInlineRename(variation);
+                                                } else if (e.key === 'Escape') {
+                                                  e.preventDefault();
+                                                  handleCancelInlineRename();
+                                                }
+                                              }}
+                                              onBlur={() => {
+                                                setTimeout(() => {
+                                                  handleCommitInlineRename(variation);
+                                                }, 100);
+                                              }}
+                                              className="bg-white text-zinc-900 border border-blue-400 rounded px-1.5 py-0.2 font-mono text-[10.5px] outline-none shadow-inner w-full"
+                                            />
+                                          ) : (
+                                            <span className="truncate font-mono">{file.name}</span>
+                                          )}
 
                                           {/* Unsaved indicator dot */}
                                           {isFileUnsaved && (
@@ -1038,47 +1210,86 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                                           )}
                                         </div>
 
-                                        {/* File actions on hover */}
-                                        <div className="flex items-center gap-1 opacity-0 group-hover/file:opacity-100 transition-opacity">
-                                          {/* Rename File */}
-                                          <button
-                                            onClick={(e) => handleOpenRenameModal(variation, file.name, e)}
-                                            title={`Rename ${file.name}`}
-                                            className={`p-0.5 rounded transition-colors ${isThisFileActiveInEditor
-                                              ? 'text-blue-100 hover:text-white'
-                                              : 'text-zinc-400 hover:text-blue-600'
-                                              }`}
-                                          >
-                                            <Edit3Icon className="w-2.5 h-2.5" />
-                                          </button>
-
-                                          {/* Delete File (if more than 1 file in folder) */}
-                                          {caseFiles.length > 1 && (
+                                        {/* File actions on hover in developer mode only */}
+                                        {mode !== 'educator' && (
+                                          <div className="flex items-center gap-1 opacity-0 group-hover/file:opacity-100 transition-opacity">
+                                            {/* Rename File */}
                                             <button
-                                              onClick={(e) => handleDeleteFileFromCase(variation, file.name, e)}
-                                              title={`Delete ${file.name} from folder`}
+                                              onClick={(e) => handleStartInlineRename(variation, file.name, e)}
+                                              title={`Rename ${file.name}`}
                                               className={`p-0.5 rounded transition-colors ${isThisFileActiveInEditor
-                                                ? 'text-blue-100 hover:text-red-200'
-                                                : 'text-zinc-400 hover:text-red-600'
+                                                ? 'text-blue-100 hover:text-white'
+                                                : 'text-zinc-400 hover:text-blue-600'
                                                 }`}
                                             >
-                                              <Trash2Icon className="w-2.5 h-2.5" />
+                                              <Edit3Icon className="w-2.5 h-2.5" />
                                             </button>
-                                          )}
-                                        </div>
+
+                                            {/* Delete File (if more than 1 file in folder) */}
+                                            {caseFiles.length > 1 && (
+                                              <button
+                                                onClick={(e) => handleDeleteFileFromCase(variation, file.name, e)}
+                                                title={`Delete ${file.name} from folder`}
+                                                className={`p-0.5 rounded transition-colors ${isThisFileActiveInEditor
+                                                  ? 'text-blue-100 hover:text-red-200'
+                                                  : 'text-zinc-400 hover:text-red-600'
+                                                  }`}
+                                              >
+                                                <Trash2Icon className="w-2.5 h-2.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })}
 
-                                  {/* Quick + Add File into this Case Folder Button */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleOpenAddFileForCase(variation, e)}
-                                    className="w-full mt-1 flex items-center justify-center gap-1 py-1 rounded border border-dashed border-zinc-300 hover:border-blue-400 hover:bg-blue-50/50 text-[10px] text-zinc-500 hover:text-blue-700 transition-colors cursor-pointer"
-                                  >
-                                    <PlusIcon className="w-2.5 h-2.5" />
-                                    <span>Add file to this folder</span>
-                                  </button>
+                                  {/* Inline New File Input (VS Code / Windows Explorer style) */}
+                                  {creatingFileInCaseId === variation.id && (
+                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10.5px] bg-blue-50/80 border border-blue-300">
+                                      <div className="flex items-center gap-1.5 min-w-0 flex-1 pl-4 relative">
+                                        <div className="absolute left-1.5 top-0 bottom-0 w-px bg-blue-400/60" />
+                                        <div className="absolute left-1.5 top-1/2 w-2 h-px bg-blue-400/60" />
+                                        <FileCodeIcon className="w-3.5 h-3.5 flex-shrink-0 text-blue-600" />
+                                        <input
+                                          ref={inlineInputRef}
+                                          type="text"
+                                          value={newInlineFileName}
+                                          onChange={(e) => setNewInlineFileName(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              handleCommitInlineNewFile(variation);
+                                            } else if (e.key === 'Escape') {
+                                              e.preventDefault();
+                                              handleCancelInlineNewFile();
+                                            }
+                                          }}
+                                          onBlur={() => handleCommitInlineNewFile(variation)}
+                                          placeholder="sketch.ino / helper.h"
+                                          className="w-full bg-white text-zinc-900 border border-blue-400 rounded px-1.5 py-0.5 font-mono text-[10.5px] outline-none shadow-inner"
+                                          autoFocus
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Quick + Button at bottom of Case files list (Available in all modes) */}
+                                  {creatingFileInCaseId !== variation.id && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCreatingFileInCaseId(variation.id);
+                                        setNewInlineFileName('');
+                                        setExpandedFolders((prev) => ({ ...prev, [variation.id]: true }));
+                                      }}
+                                      title={`Add new file inside "${variation.title}"`}
+                                      className="w-full mt-1 flex items-center justify-center py-0.5 rounded border border-dashed border-zinc-300 hover:border-blue-400 hover:bg-blue-50/50 text-zinc-500 hover:text-blue-700 transition-colors cursor-pointer text-xs font-bold leading-none select-none"
+                                    >
+                                      +
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1086,37 +1297,13 @@ export const CodeVariationCard: React.FC<CodeVariationCardProps> = ({
                         })}
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </>
             )}
           </div>
         )}
       </div>
-
-      {/* Add File Modal Dialog */}
-      <AddFileModal
-        isOpen={isAddFileModalOpen}
-        targetCaseTitle={targetCaseForNewFile?.title}
-        existingFileNames={(targetCaseForNewFile ? getVariationFiles(targetCaseForNewFile) : currentFiles).map((f) => f.name)}
-        onClose={() => {
-          setIsAddFileModalOpen(false);
-          setTargetCaseForNewFile(null);
-        }}
-        onAddFile={handleAddNewFile}
-      />
-
-      {/* Rename File Modal Dialog */}
-      <RenameFileModal
-        isOpen={isRenameFileModalOpen}
-        currentFileName={fileToRename}
-        existingFileNames={(targetCaseForRenameFile ? getVariationFiles(targetCaseForRenameFile) : currentFiles).map((f) => f.name)}
-        onClose={() => {
-          setIsRenameFileModalOpen(false);
-          setTargetCaseForRenameFile(null);
-        }}
-        onRenameFile={handleRenameFile}
-      />
 
       {/* Add Case Modal Dialog */}
       <AddCaseModal

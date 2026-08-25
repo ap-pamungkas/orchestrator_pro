@@ -31,4 +31,11 @@ describe('KIT_COMPONENTS Dataset', () => {
     expect(led).toBeDefined();
     expect(led?.requiredConditionerId).toBe('resistor-220');
   });
+
+  it('should contain the Direct (Bypass) conditioner component', () => {
+    const direct = KIT_COMPONENTS.find((c) => c.id === 'direct');
+    expect(direct).toBeDefined();
+    expect(direct?.category).toBe('conditioner');
+    expect(direct?.name).toContain('Direct');
+  });
 });

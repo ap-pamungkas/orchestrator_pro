@@ -1,5 +1,5 @@
-import React from 'react';
-import { KitComponent, ComponentCategory, ArchitectureState } from '@/types';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { KitComponent, ComponentCategory, ArchitectureState, AppMode } from '@/types';
 import { ArchitectureSlot } from './ArchitectureSlot';
 import { ConditionerSlot } from './ConditionerSlot';
 import { StatusLedGroup } from '../common/StatusLedGroup';
@@ -17,8 +17,13 @@ interface ArchitectureCanvasProps {
   onRemoveComponent: (category: ComponentCategory, slotIndex: number) => void;
   onDropConditioner: (busType: 'input' | 'output', slotIndex: number, component: KitComponent) => void;
   onRemoveConditioner: (busType: 'input' | 'output', slotIndex: number) => void;
+  onConnectWire?: (fromCategory: 'input' | 'board', fromSlot: number, toCategory: 'board' | 'output', toSlot: number) => void;
+  onDisconnectWire?: (wireId: string) => void;
+  onAttachWireConditioner?: (wireId: string, conditioner: KitComponent) => void;
+  onRemoveWireConditioner?: (wireId: string) => void;
   onInvalidDropAttempt: (message: string) => void;
   onDismissError: () => void;
+  mode?: AppMode;
 }
 
 export const ArchitectureCanvas: React.FC<ArchitectureCanvasProps> = ({
@@ -31,76 +36,191 @@ export const ArchitectureCanvas: React.FC<ArchitectureCanvasProps> = ({
   onDropComponent,
   onSelectComponent,
   onRemoveComponent,
-  onDropConditioner,
-  onRemoveConditioner,
+  onConnectWire,
+  onDisconnectWire,
+  onAttachWireConditioner,
+  onRemoveWireConditioner,
   onInvalidDropAttempt,
   onDismissError,
+  mode,
 }) => {
-  const hasBoard = architecture.boards.some(Boolean);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasContentRef = useRef<HTMLDivElement>(null);
 
-  const inputConditioners = architecture.inputConditioners || [null, null, null];
-  const outputConditioners = architecture.outputConditioners || [null, null, null];
+  // Exact Pixel Coordinates for all Terminal Ports (measured from DOM elements)
+  const [portPositions, setPortPositions] = useState<Record<string, { x: number; y: number }>>({});
 
-  // Cable & Conditioner validation logic for Input Channels
-  const isInput0Req = Boolean(
-    architecture.inputs[0]?.requiredConditionerId &&
-    (!inputConditioners[0] || inputConditioners[0].category !== 'conditioner')
-  );
-  const isInput1Req = Boolean(
-    architecture.inputs[1]?.requiredConditionerId &&
-    (!inputConditioners[1] || inputConditioners[1].category !== 'conditioner')
-  );
-  const isInput2Req = Boolean(
-    architecture.inputs[2]?.requiredConditionerId &&
-    (!inputConditioners[2] || inputConditioners[2].category !== 'conditioner')
-  );
+  // Active Interactive Wire Drawing State
+  const [drawingWire, setDrawingWire] = useState<{
+    fromCategory: 'input' | 'board';
+    fromSlot: number;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
 
-  const isInput0Active = Boolean(architecture.inputs[0]) && hasBoard && !isInput0Req;
-  const isInput1Active = Boolean(architecture.inputs[1]) && hasBoard && !isInput1Req;
-  const isInput2Active = Boolean(architecture.inputs[2]) && hasBoard && !isInput2Req;
+  // Measure Port Positions relative to the canvasContent container
+  const updatePortPositions = useCallback(() => {
+    if (!canvasContentRef.current) return;
+    const containerRect = canvasContentRef.current.getBoundingClientRect();
+    const ports = canvasContentRef.current.querySelectorAll<HTMLElement>('[data-port-id]');
+    const positions: Record<string, { x: number; y: number }> = {};
 
-  // Cable & Conditioner validation logic for Output Channels
-  const isOutput0Req = Boolean(
-    architecture.outputs[0]?.requiredConditionerId &&
-    (!outputConditioners[0] || outputConditioners[0].category !== 'conditioner')
-  );
-  const isOutput1Req = Boolean(
-    architecture.outputs[1]?.requiredConditionerId &&
-    (!outputConditioners[1] || outputConditioners[1].category !== 'conditioner')
-  );
-  const isOutput2Req = Boolean(
-    architecture.outputs[2]?.requiredConditionerId &&
-    (!outputConditioners[2] || outputConditioners[2].category !== 'conditioner')
-  );
+    ports.forEach((el) => {
+      const portId = el.getAttribute('data-port-id');
+      if (portId) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0 || containerRect.width > 0) {
+          positions[portId] = {
+            x: rect.left + rect.width / 2 - containerRect.left,
+            y: rect.top + rect.height / 2 - containerRect.top,
+          };
+        } else {
+          // Synthetic fallback for test / headless environments
+          const parts = portId.split('-');
+          const category = parts[0];
+          const slotIdx = parseInt(parts[1], 10) || 0;
+          const isTop = parts[2] === 'top';
+          const defaultX = slotIdx === 0 ? 50 : slotIdx === 1 ? 150 : 250;
+          const defaultY =
+            category === 'input'
+              ? 50
+              : category === 'board'
+                ? isTop
+                  ? 130
+                  : 190
+                : 270;
+          positions[portId] = { x: defaultX, y: defaultY };
+        }
+      }
+    });
 
-  const isOutput0Active = hasBoard && Boolean(architecture.outputs[0]) && !isOutput0Req;
-  const isOutput1Active = hasBoard && Boolean(architecture.outputs[1]) && !isOutput1Req;
-  const isOutput2Active = hasBoard && Boolean(architecture.outputs[2]) && !isOutput2Req;
+    setPortPositions(positions);
+  }, []);
+
+  // Update port positions on mount, resize, and state changes
+  useEffect(() => {
+    updatePortPositions();
+    const handleResize = () => updatePortPositions();
+    window.addEventListener('resize', handleResize);
+
+    let observer: ResizeObserver | null = null;
+    if (canvasContentRef.current && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        updatePortPositions();
+      });
+      observer.observe(canvasContentRef.current);
+    }
+
+    const rafId = requestAnimationFrame(updatePortPositions);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (observer) observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
+  }, [updatePortPositions, architecture, isExpanded]);
+
+  // Mouse move listener across document while drawing a wire
+  useEffect(() => {
+    if (!drawingWire) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!canvasContentRef.current) return;
+      const rect = canvasContentRef.current.getBoundingClientRect();
+      setDrawingWire((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentX: e.clientX - rect.left,
+              currentY: e.clientY - rect.top,
+            }
+          : null
+      );
+    };
+
+    const handleMouseUp = () => {
+      setDrawingWire(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [drawingWire]);
+
+  // Start Drawing Wire from a Port
+  const handleStartWire = (fromCategory: 'input' | 'board', slotIndex: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!canvasContentRef.current) return;
+    const containerRect = canvasContentRef.current.getBoundingClientRect();
+    const portKey = `${fromCategory}-${slotIndex}-bottom`;
+    const pos = portPositions[portKey];
+
+    const startX = pos ? pos.x : e.clientX - containerRect.left;
+    const startY = pos ? pos.y : e.clientY - containerRect.top;
+
+    setDrawingWire({
+      fromCategory,
+      fromSlot: slotIndex,
+      startX,
+      startY,
+      currentX: e.clientX - containerRect.left,
+      currentY: e.clientY - containerRect.top,
+    });
+  };
+
+  // Complete Wire on a Target Port
+  const handleCompleteWire = (toCategory: 'board' | 'output', slotIndex: number) => {
+    if (!drawingWire) return;
+
+    // Constraint: Input directly to Output is strictly forbidden
+    if (drawingWire.fromCategory === 'input' && toCategory !== 'board') {
+      onInvalidDropAttempt('Koneksi tidak valid: Jalur Input harus terhubung ke Device/Board, bukan langsung ke Output.');
+      setDrawingWire(null);
+      return;
+    }
+
+    if (drawingWire.fromCategory === 'board' && toCategory !== 'output') {
+      onInvalidDropAttempt('Koneksi tidak valid: Jalur Board harus terhubung ke Output.');
+      setDrawingWire(null);
+      return;
+    }
+
+    if (onConnectWire) {
+      onConnectWire(drawingWire.fromCategory, drawingWire.fromSlot, toCategory, slotIndex);
+    }
+    setDrawingWire(null);
+  };
+
+  // Wires list
+  const wires = architecture.wires || [];
 
   return (
     <div
-      className={`${
-        isExpanded
-          ? 'w-full flex-1 h-full'
-          : 'w-[350px] sm:w-[380px] lg:w-[410px] flex-shrink-0'
-      } flex flex-col bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden select-none transition-all duration-300`}
+      ref={containerRef}
+      className={`${isExpanded
+        ? 'w-full flex-1 h-full'
+        : 'w-[350px] sm:w-[380px] lg:w-[410px] flex-shrink-0'
+        } flex flex-col bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden select-none transition-all duration-300`}
     >
       {/* Card Header */}
       <div className="p-3 bg-zinc-50/80 border-b border-zinc-200/80 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <CpuIcon className="w-4 h-4 text-blue-600" />
           <h2 className="font-bold text-[11px] tracking-wider text-zinc-800 uppercase">
-            Pipeline
+            Line
           </h2>
           <StatusLedGroup />
-          <span className="text-[9px] font-mono bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-200 font-semibold">
-            3×3 + Addons
-          </span>
         </div>
 
-        {/* Right Header Actions */}
+        {/* Right Header Actions (Expand button - hidden in Educator Mode) */}
         <div className="flex items-center gap-1.5">
-          {onToggleExpand && (
+          {mode !== 'educator' && onToggleExpand && (
             <button
               onClick={onToggleExpand}
               className="flex items-center gap-1 px-2 py-0.5 rounded bg-white hover:bg-zinc-100 text-[10px] font-medium text-zinc-600 border border-zinc-200 transition-colors cursor-pointer shadow-2xs"
@@ -129,338 +249,269 @@ export const ArchitectureCanvas: React.FC<ArchitectureCanvasProps> = ({
         </div>
       )}
 
-      {/* 3-Layer Pipeline Content */}
+      {/* Main 3-Layer Pipeline Content with Unified Overlay Canvas */}
       <div className={`p-4 flex-1 flex flex-col items-center justify-between overflow-y-auto custom-scrollbar ${isExpanded ? 'max-w-2xl mx-auto w-full' : 'w-full'}`}>
+        <div
+          ref={canvasContentRef}
+          className="relative w-full flex-1 flex flex-col items-center justify-between gap-8 sm:gap-10 py-2"
+        >
+          {/* UNIFIED FULL-CANVAS SVG OVERLAY (n8n / draw.io style with 0.000px gap) */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible"
+            style={{ width: '100%', height: '100%' }}
+            fill="none"
+          >
+            {/* Render all user-created wires with cubic Bezier curves directly between port coordinates */}
+            {wires.map((wire) => {
+              const startKey = `${wire.fromCategory}-${wire.fromSlot}-bottom`;
+              const endKey = `${wire.toCategory}-${wire.toSlot}-top`;
+              const start = portPositions[startKey];
+              const end = portPositions[endKey];
 
-        {/* 1. INPUT LAYER (3 Slots) */}
-        <div className="w-full flex flex-col items-center">
-          <div className="w-full flex items-center justify-between mb-2">
-            <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">
-              Input
-            </span>
-            <span className="text-[9px] font-mono text-zinc-400">
-              {architecture.inputs.filter(Boolean).length}/3 Connected
-            </span>
+              if (!start || !end) return null;
+
+              const dy = end.y - start.y;
+              const curvature = Math.max(25, Math.abs(dy) * 0.45);
+              const pathData = `M ${start.x} ${start.y} C ${start.x} ${start.y + curvature}, ${end.x} ${end.y - curvature}, ${end.x} ${end.y}`;
+
+              const isFromActive = Boolean(
+                wire.fromCategory === 'input' ? architecture.inputs[wire.fromSlot] : architecture.boards[wire.fromSlot]
+              );
+              const isToActive = Boolean(
+                wire.toCategory === 'board' ? architecture.boards[wire.toSlot] : architecture.outputs[wire.toSlot]
+              );
+              const isActive = isFromActive && isToActive;
+              const isBlue = wire.fromCategory === 'input';
+
+              return (
+                <g key={wire.id}>
+                  {/* Glowing ambient background cable (like n8n active connection) */}
+                  {isActive && (
+                    <path
+                      d={pathData}
+                      fill="none"
+                      stroke={isBlue ? '#60a5fa' : '#34d399'}
+                      strokeWidth="7"
+                      strokeLinecap="round"
+                      opacity="0.3"
+                    />
+                  )}
+                  {/* Main connection cable */}
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke={isActive ? (isBlue ? '#2563eb' : '#059669') : '#cbd5e1'}
+                    strokeWidth={isActive ? 2.5 : 1.5}
+                    strokeLinecap="round"
+                    className={isActive ? (isBlue ? 'cable-flow-active-blue' : 'cable-flow-active-emerald') : ''}
+                  />
+                  {/* Midpoint signal pulse indicator */}
+                  {isActive && (
+                    <circle
+                      cx={(start.x + end.x) / 2}
+                      cy={(start.y + end.y) / 2}
+                      r="3.5"
+                      fill={isBlue ? '#2563eb' : '#059669'}
+                      className="animate-pulse"
+                    />
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Live Interactive Wire Preview while user is pulling/dragging from a port */}
+            {drawingWire && (() => {
+              const startKey = `${drawingWire.fromCategory}-${drawingWire.fromSlot}-bottom`;
+              const start = portPositions[startKey] || { x: drawingWire.startX, y: drawingWire.startY };
+
+              const endX = drawingWire.currentX;
+              const endY = drawingWire.currentY;
+              const dy = Math.max(20, endY - start.y);
+              const curvature = Math.max(20, dy * 0.45);
+              const pathData = `M ${start.x} ${start.y} C ${start.x} ${start.y + curvature}, ${endX} ${endY - curvature}, ${endX} ${endY}`;
+
+              return (
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={drawingWire.fromCategory === 'input' ? '#3b82f6' : '#10b981'}
+                  strokeWidth="2.5"
+                  strokeDasharray="4,4"
+                  strokeLinecap="round"
+                  className="animate-pulse"
+                />
+              );
+            })()}
+          </svg>
+
+          {/* INLINE CONDITIONER / DIRECT SLOTS (Positioned on the wire curve midpoint) */}
+          {wires.map((wire) => {
+            const startKey = `${wire.fromCategory}-${wire.fromSlot}-bottom`;
+            const endKey = `${wire.toCategory}-${wire.toSlot}-top`;
+            const start = portPositions[startKey];
+            const end = portPositions[endKey];
+
+            if (!start || !end) return null;
+
+            const midX = (start.x + end.x) / 2;
+            const midY = (start.y + end.y) / 2;
+            const comp = wire.fromCategory === 'input' ? architecture.inputs[wire.fromSlot] : architecture.outputs[wire.toSlot];
+            const isReq = Boolean(comp && !wire.conditioner);
+
+            return (
+              <div
+                key={`conditioner-wire-${wire.id}`}
+                style={{ left: `${midX}px`, top: `${midY}px`, transform: 'translate(-50%, -50%)' }}
+                className="absolute pointer-events-auto flex items-center gap-1 group/wire z-20"
+              >
+                <ConditionerSlot
+                  busType={wire.fromCategory === 'input' ? 'input' : 'output'}
+                  slotIndex={wire.toSlot}
+                  component={wire.conditioner || null}
+                  isRequired={isReq}
+                  requiredName={comp?.requiredConditionerName || 'Direct (0Ω) / Resistor'}
+                  draggedCategory={draggedCategory}
+                  onDropConditioner={(_, __, conditionerComp) => {
+                    if (onAttachWireConditioner) {
+                      onAttachWireConditioner(wire.id, conditionerComp);
+                    }
+                  }}
+                  onRemoveConditioner={() => {
+                    if (onRemoveWireConditioner) {
+                      onRemoveWireConditioner(wire.id);
+                    }
+                  }}
+                  onInvalidDropAttempt={onInvalidDropAttempt}
+                />
+
+                {/* Wire Disconnect Button on Hover */}
+                {onDisconnectWire && (
+                  <button
+                    onClick={() => onDisconnectWire(wire.id)}
+                    className="opacity-0 group-hover/wire:opacity-100 p-0.5 bg-red-600 text-white rounded-full text-[8px] hover:scale-115 transition-all shadow-xs cursor-pointer"
+                    title="Disconnect wire"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* 1. INPUT LAYER (3 Slots) */}
+          <div className="w-full flex flex-col items-center z-10">
+            <div className="w-full flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">
+                Input
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full justify-items-center">
+              {[0, 1, 2].map((slotIdx) => (
+                <ArchitectureSlot
+                  key={`input-${slotIdx}`}
+                  category="input"
+                  slotIndex={slotIdx}
+                  component={architecture.inputs[slotIdx]}
+                  selectedComponent={selectedComponent}
+                  draggedCategory={draggedCategory}
+                  onDropComponent={onDropComponent}
+                  onSelectComponent={onSelectComponent}
+                  onRemoveComponent={onRemoveComponent}
+                  onInvalidDropAttempt={onInvalidDropAttempt}
+                  onStartWire={handleStartWire}
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full justify-items-center">
-            {[0, 1, 2].map((slotIdx) => (
+          {/* 2. DEVICE / BOARD LAYER (3 Slots) */}
+          <div className="w-full flex flex-col items-center z-10">
+            <div className="w-full flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">
+                Device
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full justify-items-center items-center">
+              {/* Board Slot 0 */}
               <ArchitectureSlot
-                key={`input-${slotIdx}`}
-                category="input"
-                slotIndex={slotIdx}
-                component={architecture.inputs[slotIdx]}
+                category="board"
+                slotIndex={0}
+                component={architecture.boards[0]}
                 selectedComponent={selectedComponent}
                 draggedCategory={draggedCategory}
                 onDropComponent={onDropComponent}
                 onSelectComponent={onSelectComponent}
                 onRemoveComponent={onRemoveComponent}
                 onInvalidDropAttempt={onInvalidDropAttempt}
+                onStartWire={handleStartWire}
+                onCompleteWire={handleCompleteWire}
+                isWireTargetCandidate={Boolean(drawingWire && drawingWire.fromCategory === 'input')}
               />
-            ))}
-          </div>
-        </div>
 
-        {/* DYNAMIC CABLES & INLINE CONDITIONER ADD-ON SLOTS: INPUT ➔ MCU BOARD */}
-        <div className="w-full h-14 relative my-1 flex items-center justify-center">
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 300 56" fill="none">
-            {/* Cable 0: Input Slot 0 (x=50) ➔ MCU Center (x=130) */}
-            {isInput0Active && (
-              <path
-                d="M 50 0 C 50 26, 120 30, 130 56"
-                stroke="#60a5fa"
-                strokeWidth="6"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            )}
-            <path
-              d="M 50 0 C 50 26, 120 30, 130 56"
-              stroke={isInput0Active ? '#2563eb' : isInput0Req ? '#f59e0b' : '#cbd5e1'}
-              strokeWidth={isInput0Active ? 2.5 : 1.5}
-              strokeDasharray={isInput0Active ? '6,3' : '4,4'}
-              strokeLinecap="round"
-              className={isInput0Active ? 'cable-flow-active-blue' : ''}
-            />
-
-            {/* Cable 1: Input Slot 1 (x=150) ➔ MCU Center (x=150) */}
-            {isInput1Active && (
-              <path
-                d="M 150 0 L 150 56"
-                stroke="#60a5fa"
-                strokeWidth="6"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            )}
-            <path
-              d="M 150 0 L 150 56"
-              stroke={isInput1Active ? '#2563eb' : isInput1Req ? '#f59e0b' : '#cbd5e1'}
-              strokeWidth={isInput1Active ? 2.5 : 1.5}
-              strokeDasharray={isInput1Active ? '6,3' : '4,4'}
-              strokeLinecap="round"
-              className={isInput1Active ? 'cable-flow-active-blue' : ''}
-            />
-
-            {/* Cable 2: Input Slot 2 (x=250) ➔ MCU Center (x=170) */}
-            {isInput2Active && (
-              <path
-                d="M 250 0 C 250 26, 180 30, 170 56"
-                stroke="#60a5fa"
-                strokeWidth="6"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            )}
-            <path
-              d="M 250 0 C 250 26, 180 30, 170 56"
-              stroke={isInput2Active ? '#2563eb' : isInput2Req ? '#f59e0b' : '#cbd5e1'}
-              strokeWidth={isInput2Active ? 2.5 : 1.5}
-              strokeDasharray={isInput2Active ? '6,3' : '4,4'}
-              strokeLinecap="round"
-              className={isInput2Active ? 'cable-flow-active-blue' : ''}
-            />
-
-            {/* Signal Pulse Nodes */}
-            {isInput0Active && <circle cx="50" cy="14" r="3.5" fill="#2563eb" className="animate-pulse" />}
-            {isInput1Active && <circle cx="150" cy="28" r="3.5" fill="#2563eb" className="animate-pulse" />}
-            {isInput2Active && <circle cx="250" cy="14" r="3.5" fill="#2563eb" className="animate-pulse" />}
-          </svg>
-
-          {/* 3 Mini Inline Conditioner Slots */}
-          <div className="absolute inset-0 flex items-center justify-between px-8 sm:px-10 pointer-events-none">
-            <div className="pointer-events-auto">
-              <ConditionerSlot
-                busType="input"
-                slotIndex={0}
-                component={inputConditioners[0]}
-                isRequired={isInput0Req}
-                requiredName={architecture.inputs[0]?.requiredConditionerName}
-                draggedCategory={draggedCategory}
-                onDropConditioner={onDropConditioner}
-                onRemoveConditioner={onRemoveConditioner}
-                onInvalidDropAttempt={onInvalidDropAttempt}
-              />
-            </div>
-            <div className="pointer-events-auto">
-              <ConditionerSlot
-                busType="input"
-                slotIndex={1}
-                component={inputConditioners[1]}
-                isRequired={isInput1Req}
-                requiredName={architecture.inputs[1]?.requiredConditionerName}
-                draggedCategory={draggedCategory}
-                onDropConditioner={onDropConditioner}
-                onRemoveConditioner={onRemoveConditioner}
-                onInvalidDropAttempt={onInvalidDropAttempt}
-              />
-            </div>
-            <div className="pointer-events-auto">
-              <ConditionerSlot
-                busType="input"
-                slotIndex={2}
-                component={inputConditioners[2]}
-                isRequired={isInput2Req}
-                requiredName={architecture.inputs[2]?.requiredConditionerName}
-                draggedCategory={draggedCategory}
-                onDropConditioner={onDropConditioner}
-                onRemoveConditioner={onRemoveConditioner}
-                onInvalidDropAttempt={onInvalidDropAttempt}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Device (3 Slots) */}
-        <div className="w-full flex flex-col items-center">
-          <div className="w-full flex items-center justify-between mb-2">
-            <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">
-              Device
-            </span>
-            <span className="text-[9px] font-mono text-zinc-400">
-              {architecture.boards.filter(Boolean).length}/3 Active
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full justify-items-center items-center">
-            {/* Board Slot 0 */}
-            <ArchitectureSlot
-              category="board"
-              slotIndex={0}
-              component={architecture.boards[0]}
-              selectedComponent={selectedComponent}
-              draggedCategory={draggedCategory}
-              onDropComponent={onDropComponent}
-              onSelectComponent={onSelectComponent}
-              onRemoveComponent={onRemoveComponent}
-              onInvalidDropAttempt={onInvalidDropAttempt}
-            />
-
-            {/* Board Slot 1 (Center Primary Core) */}
-            <ArchitectureSlot
-              category="board"
-              slotIndex={1}
-              component={architecture.boards[1]}
-              selectedComponent={selectedComponent}
-              draggedCategory={draggedCategory}
-              onDropComponent={onDropComponent}
-              onSelectComponent={onSelectComponent}
-              onRemoveComponent={onRemoveComponent}
-              onInvalidDropAttempt={onInvalidDropAttempt}
-              prominent={true}
-            />
-
-            {/* Board Slot 2 */}
-            <ArchitectureSlot
-              category="board"
-              slotIndex={2}
-              component={architecture.boards[2]}
-              selectedComponent={selectedComponent}
-              draggedCategory={draggedCategory}
-              onDropComponent={onDropComponent}
-              onSelectComponent={onSelectComponent}
-              onRemoveComponent={onRemoveComponent}
-              onInvalidDropAttempt={onInvalidDropAttempt}
-            />
-          </div>
-        </div>
-
-        {/* DYNAMIC CABLES & INLINE CONDITIONER ADD-ON SLOTS: MCU BOARD ➔ OUTPUT */}
-        <div className="w-full h-14 relative my-1 flex items-center justify-center">
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 300 56" fill="none">
-            {/* Cable 0: MCU Center (x=130) ➔ Output Slot 0 (x=50) */}
-            {isOutput0Active && (
-              <path
-                d="M 130 0 C 120 26, 50 30, 50 56"
-                stroke="#34d399"
-                strokeWidth="6"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            )}
-            <path
-              d="M 130 0 C 120 26, 50 30, 50 56"
-              stroke={isOutput0Active ? '#059669' : isOutput0Req ? '#f59e0b' : '#cbd5e1'}
-              strokeWidth={isOutput0Active ? 2.5 : 1.5}
-              strokeDasharray={isOutput0Active ? '6,3' : '4,4'}
-              strokeLinecap="round"
-              className={isOutput0Active ? 'cable-flow-active-emerald' : ''}
-            />
-
-            {/* Cable 1: MCU Center (x=150) ➔ Output Slot 1 (x=150) */}
-            {isOutput1Active && (
-              <path
-                d="M 150 0 L 150 56"
-                stroke="#34d399"
-                strokeWidth="6"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            )}
-            <path
-              d="M 150 0 L 150 56"
-              stroke={isOutput1Active ? '#059669' : isOutput1Req ? '#f59e0b' : '#cbd5e1'}
-              strokeWidth={isOutput1Active ? 2.5 : 1.5}
-              strokeDasharray={isOutput1Active ? '6,3' : '4,4'}
-              strokeLinecap="round"
-              className={isOutput1Active ? 'cable-flow-active-emerald' : ''}
-            />
-
-            {/* Cable 2: MCU Center (x=170) ➔ Output Slot 2 (x=250) */}
-            {isOutput2Active && (
-              <path
-                d="M 170 0 C 180 26, 250 30, 250 56"
-                stroke="#34d399"
-                strokeWidth="6"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            )}
-            <path
-              d="M 170 0 C 180 26, 250 30, 250 56"
-              stroke={isOutput2Active ? '#059669' : isOutput2Req ? '#f59e0b' : '#cbd5e1'}
-              strokeWidth={isOutput2Active ? 2.5 : 1.5}
-              strokeDasharray={isOutput2Active ? '6,3' : '4,4'}
-              strokeLinecap="round"
-              className={isOutput2Active ? 'cable-flow-active-emerald' : ''}
-            />
-
-            {/* Signal Pulse Nodes */}
-            {isOutput0Active && <circle cx="50" cy="42" r="3.5" fill="#059669" className="animate-pulse" />}
-            {isOutput1Active && <circle cx="150" cy="28" r="3.5" fill="#059669" className="animate-pulse" />}
-            {isOutput2Active && <circle cx="250" cy="42" r="3.5" fill="#059669" className="animate-pulse" />}
-          </svg>
-
-          {/* 3 Mini Inline Conditioner Slots */}
-          <div className="absolute inset-0 flex items-center justify-between px-8 sm:px-10 pointer-events-none">
-            <div className="pointer-events-auto">
-              <ConditionerSlot
-                busType="output"
-                slotIndex={0}
-                component={outputConditioners[0]}
-                isRequired={isOutput0Req}
-                requiredName={architecture.outputs[0]?.requiredConditionerName}
-                draggedCategory={draggedCategory}
-                onDropConditioner={onDropConditioner}
-                onRemoveConditioner={onRemoveConditioner}
-                onInvalidDropAttempt={onInvalidDropAttempt}
-              />
-            </div>
-            <div className="pointer-events-auto">
-              <ConditionerSlot
-                busType="output"
-                slotIndex={1}
-                component={outputConditioners[1]}
-                isRequired={isOutput1Req}
-                requiredName={architecture.outputs[1]?.requiredConditionerName}
-                draggedCategory={draggedCategory}
-                onDropConditioner={onDropConditioner}
-                onRemoveConditioner={onRemoveConditioner}
-                onInvalidDropAttempt={onInvalidDropAttempt}
-              />
-            </div>
-            <div className="pointer-events-auto">
-              <ConditionerSlot
-                busType="output"
-                slotIndex={2}
-                component={outputConditioners[2]}
-                isRequired={isOutput2Req}
-                requiredName={architecture.outputs[2]?.requiredConditionerName}
-                draggedCategory={draggedCategory}
-                onDropConditioner={onDropConditioner}
-                onRemoveConditioner={onRemoveConditioner}
-                onInvalidDropAttempt={onInvalidDropAttempt}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 3. OUTPUT LAYER (3 Slots) */}
-        <div className="w-full flex flex-col items-center">
-          <div className="w-full flex items-center justify-between mb-2">
-            <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">
-              Output
-            </span>
-            <span className="text-[9px] font-mono text-zinc-400">
-              {architecture.outputs.filter(Boolean).length}/3 Connected
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full justify-items-center">
-            {[0, 1, 2].map((slotIdx) => (
+              {/* Board Slot 1 (Center Primary Core) */}
               <ArchitectureSlot
-                key={`output-${slotIdx}`}
-                category="output"
-                slotIndex={slotIdx}
-                component={architecture.outputs[slotIdx]}
+                category="board"
+                slotIndex={1}
+                component={architecture.boards[1]}
                 selectedComponent={selectedComponent}
                 draggedCategory={draggedCategory}
                 onDropComponent={onDropComponent}
                 onSelectComponent={onSelectComponent}
                 onRemoveComponent={onRemoveComponent}
                 onInvalidDropAttempt={onInvalidDropAttempt}
+                onStartWire={handleStartWire}
+                onCompleteWire={handleCompleteWire}
+                isWireTargetCandidate={Boolean(drawingWire && drawingWire.fromCategory === 'input')}
+                prominent={true}
               />
-            ))}
+
+              {/* Board Slot 2 */}
+              <ArchitectureSlot
+                category="board"
+                slotIndex={2}
+                component={architecture.boards[2]}
+                selectedComponent={selectedComponent}
+                draggedCategory={draggedCategory}
+                onDropComponent={onDropComponent}
+                onSelectComponent={onSelectComponent}
+                onRemoveComponent={onRemoveComponent}
+                onInvalidDropAttempt={onInvalidDropAttempt}
+                onStartWire={handleStartWire}
+                onCompleteWire={handleCompleteWire}
+                isWireTargetCandidate={Boolean(drawingWire && drawingWire.fromCategory === 'input')}
+              />
+            </div>
+          </div>
+
+          {/* 3. OUTPUT LAYER (3 Slots) */}
+          <div className="w-full flex flex-col items-center z-10">
+            <div className="w-full flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase">
+                Output
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full justify-items-center">
+              {[0, 1, 2].map((slotIdx) => (
+                <ArchitectureSlot
+                  key={`output-${slotIdx}`}
+                  category="output"
+                  slotIndex={slotIdx}
+                  component={architecture.outputs[slotIdx]}
+                  selectedComponent={selectedComponent}
+                  draggedCategory={draggedCategory}
+                  onDropComponent={onDropComponent}
+                  onSelectComponent={onSelectComponent}
+                  onRemoveComponent={onRemoveComponent}
+                  onInvalidDropAttempt={onInvalidDropAttempt}
+                  onCompleteWire={handleCompleteWire}
+                  isWireTargetCandidate={Boolean(drawingWire && drawingWire.fromCategory === 'board')}
+                  isWireTargetInvalid={Boolean(drawingWire && drawingWire.fromCategory === 'input')}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>

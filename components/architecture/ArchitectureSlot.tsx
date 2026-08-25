@@ -14,6 +14,10 @@ interface ArchitectureSlotProps {
   onRemoveComponent: (category: ComponentCategory, slotIndex: number) => void;
   onInvalidDropAttempt?: (message: string) => void;
   prominent?: boolean; // For center board slot
+  onStartWire?: (category: 'input' | 'board', slotIndex: number, e: React.MouseEvent) => void;
+  onCompleteWire?: (category: 'board' | 'output', slotIndex: number) => void;
+  isWireTargetCandidate?: boolean;
+  isWireTargetInvalid?: boolean;
 }
 
 export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
@@ -27,6 +31,10 @@ export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
   onRemoveComponent,
   onInvalidDropAttempt,
   prominent = false,
+  onStartWire,
+  onCompleteWire,
+  isWireTargetCandidate = false,
+  isWireTargetInvalid = false,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -73,17 +81,32 @@ export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
 
   return (
     <div className="relative flex flex-col items-center">
-      {/* Top Connection Terminal Port */}
+      {/* Top Connection Terminal Port (Input for Board and Output layers) */}
       {category !== 'input' && (
         <div
-          className={`absolute -top-1.5 w-2.5 h-2.5 rounded-full z-10 transition-all duration-300 border ${
-            component
-              ? category === 'board'
-                ? 'bg-blue-500 border-blue-200 ring-2 ring-blue-100 shadow-[0_0_6px_rgba(59,130,246,0.6)]'
-                : 'bg-emerald-500 border-emerald-200 ring-2 ring-emerald-100 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
-              : 'bg-zinc-300 border-zinc-200'
+          data-port-id={`${category}-${slotIndex}-top`}
+          onMouseUp={(e) => {
+            e.stopPropagation();
+            if (onCompleteWire && (category === 'board' || category === 'output')) {
+              onCompleteWire(category, slotIndex);
+            }
+          }}
+          className={`absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full z-20 transition-all duration-200 border cursor-pointer ${
+            isWireTargetCandidate
+              ? 'bg-blue-400 border-white ring-4 ring-blue-400 scale-135 animate-pulse shadow-md'
+              : isWireTargetInvalid
+                ? 'bg-red-500 border-white ring-4 ring-red-300 scale-125'
+                : component
+                  ? category === 'board'
+                    ? 'bg-blue-500 border-blue-200 ring-2 ring-blue-100 shadow-[0_0_6px_rgba(59,130,246,0.6)] hover:scale-125'
+                    : 'bg-emerald-500 border-emerald-200 ring-2 ring-emerald-100 shadow-[0_0_6px_rgba(16,185,129,0.6)] hover:scale-125'
+                  : 'bg-zinc-300 border-zinc-200 hover:bg-zinc-400'
           }`}
-          title={component ? `${component.name} Input Port` : 'Port Disconnected'}
+          title={
+            component
+              ? `${component.name} Input Port (Drop wire to connect)`
+              : 'Input Port (Drop wire to connect)'
+          }
         />
       )}
 
@@ -92,8 +115,8 @@ export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative transition-all duration-200 flex flex-col items-center justify-between ${
-          prominent ? 'w-26 h-28 sm:w-30 sm:h-32 rounded-xl' : 'w-20 h-22 sm:w-24 sm:h-24 rounded-lg'
+        className={`relative transition-all duration-200 flex flex-col items-center justify-between w-20 h-22 sm:w-24 sm:h-24 ${
+          prominent ? 'rounded-xl' : 'rounded-lg'
         } ${
           isDragOver
             ? isValidDrag
@@ -102,8 +125,12 @@ export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
             : component
               ? isSelected
                 ? 'border-2 border-blue-500 bg-white ring-4 ring-blue-100 shadow-md shadow-blue-500/10'
-                : 'border border-zinc-200 hover:border-zinc-300 bg-white shadow-2xs hover:shadow-xs'
-              : 'border border-dashed border-zinc-300 hover:border-zinc-400 bg-zinc-50/60'
+                : prominent
+                  ? 'border-2 border-blue-300/80 hover:border-blue-400 bg-white shadow-2xs hover:shadow-xs'
+                  : 'border border-zinc-200 hover:border-zinc-300 bg-white shadow-2xs hover:shadow-xs'
+              : prominent
+                ? 'border-2 border-dashed border-blue-300/70 hover:border-blue-400 bg-blue-50/30'
+                : 'border border-dashed border-zinc-300 hover:border-zinc-400 bg-zinc-50/60'
         }`}
       >
         {/* EMPTY SLOT */}
@@ -162,15 +189,23 @@ export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
                 prominent ? 'w-14 h-14 sm:w-16 sm:h-16' : 'w-10 h-10 sm:w-11 sm:h-11'
               } group-hover:scale-105 transition-transform`}
             >
-              <Image
-                src={component.image}
-                alt={component.name}
-                width={prominent ? 64 : 44}
-                height={prominent ? 64 : 44}
-                className="object-contain max-h-full max-w-full drop-shadow-sm"
-                unoptimized
-                priority
-              />
+              {component.id === 'direct' || !component.image ? (
+                <div className="w-full h-full flex flex-col items-center justify-center rounded bg-blue-50/70 border border-dashed border-blue-200">
+                  <span className="font-mono text-[9px] font-bold text-blue-600 tracking-wider">
+                    DIRECT
+                  </span>
+                </div>
+              ) : (
+                <Image
+                  src={component.image}
+                  alt={component.name}
+                  width={prominent ? 64 : 44}
+                  height={prominent ? 64 : 44}
+                  className="object-contain max-h-full max-w-full drop-shadow-sm"
+                  unoptimized
+                  priority
+                />
+              )}
             </div>
 
             {/* Component Name */}
@@ -187,17 +222,28 @@ export const ArchitectureSlot: React.FC<ArchitectureSlotProps> = ({
         )}
       </div>
 
-      {/* Bottom Connection Terminal Port */}
+      {/* Bottom Connection Terminal Port (Output for Input and Board layers) */}
       {category !== 'output' && (
         <div
-          className={`absolute -bottom-1.5 w-2.5 h-2.5 rounded-full z-10 transition-all duration-300 border ${
+          data-port-id={`${category}-${slotIndex}-bottom`}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            if (onStartWire && (category === 'input' || category === 'board')) {
+              onStartWire(category, slotIndex, e);
+            }
+          }}
+          className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full z-20 transition-all duration-200 border cursor-crosshair hover:scale-135 hover:shadow-md active:scale-140 ${
             component
               ? category === 'input'
                 ? 'bg-blue-500 border-blue-200 ring-2 ring-blue-100 shadow-[0_0_6px_rgba(59,130,246,0.6)]'
                 : 'bg-emerald-500 border-emerald-200 ring-2 ring-emerald-100 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
-              : 'bg-zinc-300 border-zinc-200'
+              : 'bg-zinc-300 border-zinc-200 hover:bg-zinc-400'
           }`}
-          title={component ? `${component.name} Output Port` : 'Port Disconnected'}
+          title={
+            category === 'input'
+              ? 'Tarik garis (Drag to connect) ke Device / Board'
+              : 'Tarik garis (Drag to connect) ke Output'
+          }
         />
       )}
     </div>

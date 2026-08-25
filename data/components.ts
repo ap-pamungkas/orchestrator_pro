@@ -81,6 +81,16 @@ export const KIT_COMPONENTS: KitComponent[] = [
 
   // CONDITIONER / ADD-ON COMPONENTS
   {
+    id: 'direct',
+    name: 'Direct',
+    category: 'conditioner',
+    type: 'Direct Bypass',
+    description: 'Jalur koneksi langsung tanpa pengondisi sinyal untuk mengisi slot add-on ketika tidak diperlukan komponen tambahan.',
+    image: '',
+    pinInfo: 'Direct Pass (0Ω)',
+    statusBadge: 'Direct Bypass',
+  },
+  {
     id: 'resistor-220',
     name: '220Ω Resistor',
     category: 'conditioner',
@@ -96,7 +106,7 @@ export const KIT_COMPONENTS: KitComponent[] = [
     category: 'conditioner',
     type: 'Pull-up / Pull-down',
     description: '10k Ohm pull-up or pull-down resistor for stable digital logic levels.',
-    image: '/assets/input/tactile_button.png',
+    image: '/assets/conditioner/resistor.png',
     pinInfo: 'Pull-up (10kΩ)',
     statusBadge: 'Logic Bias',
   },
@@ -106,7 +116,7 @@ export const KIT_COMPONENTS: KitComponent[] = [
     category: 'conditioner',
     type: 'Decoupling Filter',
     description: '100nF ceramic capacitor for power rail noise filtering and debouncing.',
-    image: '/assets/input/potentio.png',
+    image: '/assets/conditioner/resistor.png',
     pinInfo: 'Filter (100nF)',
     statusBadge: 'Noise Filter',
   },

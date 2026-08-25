@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { KitComponent, ComponentCategory } from '@/types';
+import { KitComponent, ComponentCategory, AppMode } from '@/types';
 import { StatusLedGroup } from '../common/StatusLedGroup';
 import { AddComponentModal } from './AddComponentModal';
 import {
@@ -19,6 +19,7 @@ interface ComponentLibraryProps {
   onDeleteComponent: (componentId: string) => void;
   onDragStartComponent: (component: KitComponent) => void;
   onDragEndComponent: () => void;
+  mode?: AppMode;
 }
 
 export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
@@ -27,6 +28,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
   onDeleteComponent,
   onDragStartComponent,
   onDragEndComponent,
+  mode,
 }) => {
   const [collapsedSections, setCollapsedSections] = useState<Record<ComponentCategory, boolean>>({
     input: false,
@@ -66,16 +68,16 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
           <div className="flex items-center gap-2">
             <LayersIcon className="w-4 h-4 text-zinc-500" />
             <h2 className="font-semibold text-xs tracking-wider text-zinc-800 uppercase">
-              KIT COMPONENT
+              COMPONENT
             </h2>
             <StatusLedGroup />
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200/60">
               {components.length}
             </span>
-          </div>
+          </div> */}
         </div>
 
         {/* Component Category Groups (Scrollable) */}
@@ -106,17 +108,19 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[9.5px] text-zinc-400 font-mono">
+                    {/* <span className="text-[9.5px] text-zinc-400 font-mono">
                       ({category.count})
-                    </span>
-                    {/* Quick Add Button for this Category */}
-                    <button
-                      onClick={(e) => handleOpenAddModal(category.id, e)}
-                      title={`Add new ${category.label} component`}
-                      className="w-4 h-4 rounded hover:bg-blue-100 hover:text-blue-700 text-zinc-400 flex items-center justify-center transition-colors cursor-pointer"
-                    >
-                      <PlusIcon className="w-3 h-3" />
-                    </button>
+                    </span> */}
+                    {/* Quick Add Button for this Category (Hidden in Educator Mode) */}
+                    {mode !== 'educator' && (
+                      <button
+                        onClick={(e) => handleOpenAddModal(category.id, e)}
+                        title={`Add new ${category.label} component`}
+                        className="w-4 h-4 rounded hover:bg-blue-100 hover:text-blue-700 text-zinc-400 flex items-center justify-center transition-colors cursor-pointer"
+                      >
+                        <PlusIcon className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -148,7 +152,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                         </div>
 
                         <div className="absolute top-0.5 right-0.5 flex items-center gap-0.5 z-10">
-                          {component.isCustom && (
+                          {component.isCustom && mode !== 'educator' && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -167,15 +171,26 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
 
                         {/* Hardware Image Container */}
                         <div className="w-12 h-12 sm:w-13 sm:h-13 relative mb-1 flex items-center justify-center bg-zinc-50/80 rounded border border-zinc-100 p-0.5 group-hover:scale-105 transition-transform">
-                          <Image
-                            src={component.image}
-                            alt={component.name}
-                            width={48}
-                            height={48}
-                            className="object-contain max-h-11 max-w-11 drop-shadow-sm"
-                            unoptimized
-                            priority
-                          />
+                          {component.id === 'direct' || !component.image ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center rounded bg-blue-50/70 border border-dashed border-blue-200">
+                              <span className="font-mono text-[9px] font-bold text-blue-600 tracking-wider">
+                                DIRECT
+                              </span>
+                              <span className="font-mono text-[7px] text-zinc-400">
+                                0Ω Pass
+                              </span>
+                            </div>
+                          ) : (
+                            <Image
+                              src={component.image}
+                              alt={component.name}
+                              width={48}
+                              height={48}
+                              className="object-contain max-h-11 max-w-11 drop-shadow-sm"
+                              unoptimized
+                              priority
+                            />
+                          )}
                         </div>
 
                         {/* Component Info */}
@@ -194,30 +209,25 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
           })}
         </div>
 
-        {/* Bottom Footer Tool Links */}
-        <div className="p-3 border-t border-zinc-200 bg-white flex flex-col gap-1.5 text-xs text-zinc-600">
-          <button
-            onClick={() => handleOpenAddModal('input')}
-            className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-100/80 hover:bg-blue-50 text-blue-700 font-medium transition-colors cursor-pointer text-left border border-zinc-200/80"
-          >
-            <PlusIcon className="w-3.5 h-3.5" />
-            <span>Create Custom Component</span>
-          </button>
-          {/* <button
-            onClick={(e) => e.preventDefault()}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors cursor-pointer text-left"
-          >
-            <HelpCircleIcon className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Help & Pinout Guide</span>
-          </button> */}
-          <button
-            onClick={(e) => e.preventDefault()}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors cursor-pointer text-left"
-          >
-            <TerminalIcon className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Console / Serial Monitor</span>
-          </button>
-        </div>
+        {/* Bottom Footer Tool Links (Hidden in Educator Mode, shown in Developer Mode) */}
+        {mode !== 'educator' && (
+          <div className="p-3 border-t border-zinc-200 bg-white flex flex-col gap-1.5 text-xs text-zinc-600">
+            <button
+              onClick={() => handleOpenAddModal('input')}
+              className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-100/80 hover:bg-blue-50 text-blue-700 font-medium transition-colors cursor-pointer text-left border border-zinc-200/80"
+            >
+              <PlusIcon className="w-3.5 h-3.5" />
+              <span>Create Custom Component</span>
+            </button>
+            <button
+              onClick={(e) => e.preventDefault()}
+              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors cursor-pointer text-left"
+            >
+              <TerminalIcon className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Console / Serial Monitor</span>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Add Component Modal Dialog */}

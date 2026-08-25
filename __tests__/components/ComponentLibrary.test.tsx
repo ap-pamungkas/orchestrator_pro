@@ -22,7 +22,7 @@ describe('ComponentLibrary Component', () => {
     expect(screen.getByText('Conditioner')).toBeInTheDocument();
   });
 
-  it('should display the total component count badge', () => {
+  it('should display the StatusLedGroup in the header', () => {
     render(
       <ComponentLibrary
         components={KIT_COMPONENTS}
@@ -33,7 +33,7 @@ describe('ComponentLibrary Component', () => {
       />
     );
 
-    expect(screen.getByText(KIT_COMPONENTS.length.toString())).toBeInTheDocument();
+    expect(screen.getByTitle(/Hardware Status LEDs/i)).toBeInTheDocument();
   });
 
   it('should toggle accordion when category header is clicked', () => {
@@ -59,7 +59,7 @@ describe('ComponentLibrary Component', () => {
     expect(screen.getByText('Tactile Button')).toBeInTheDocument();
   });
 
-  it('should open Add Component modal when "+ Create Custom Component" is clicked', () => {
+  it('should open Add Component modal when "+ Create Custom Component" is clicked in developer mode', () => {
     render(
       <ComponentLibrary
         components={KIT_COMPONENTS}
@@ -67,10 +67,29 @@ describe('ComponentLibrary Component', () => {
         onDeleteComponent={vi.fn()}
         onDragStartComponent={vi.fn()}
         onDragEndComponent={vi.fn()}
+        mode="developer"
       />
     );
 
     fireEvent.click(screen.getByText(/Create Custom Component/));
     expect(screen.getByText('Add New Kit Component')).toBeInTheDocument();
   });
+
+  it('should hide Create Custom Component and Console / Serial Monitor in educator mode', () => {
+    render(
+      <ComponentLibrary
+        components={KIT_COMPONENTS}
+        onAddComponent={vi.fn()}
+        onDeleteComponent={vi.fn()}
+        onDragStartComponent={vi.fn()}
+        onDragEndComponent={vi.fn()}
+        mode="educator"
+      />
+    );
+
+    expect(screen.queryByText(/Create Custom Component/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Console \/ Serial Monitor/i)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/Add new INPUT component/i)).not.toBeInTheDocument();
+  });
 });
+

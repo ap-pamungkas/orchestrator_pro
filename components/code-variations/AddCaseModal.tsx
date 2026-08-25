@@ -241,7 +241,7 @@ void loop() {
       isCustom: true,
       files: [
         {
-          name: 'main.cpp',
+          name: 'sketch.ino',
           content: sourceCode,
         },
       ],

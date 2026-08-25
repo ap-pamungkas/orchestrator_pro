@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { KitComponent, ComponentCategory, ArchitectureState, CodeVariation } from '@/types';
+import { KitComponent, ComponentCategory, ArchitectureState, CodeVariation, AppMode, WireConnection } from '@/types';
 import { KIT_COMPONENTS } from '@/data/components';
 import { CODE_VARIATIONS } from '@/data/codeVariations';
 import { Header } from '@/components/layout/Header';
@@ -21,13 +21,14 @@ export default function Home() {
   // Code Variations & Cases State (Built-in + User Added Cases + File modifications)
   const [variations, setVariations] = useState<CodeVariation[]>(CODE_VARIATIONS);
 
-  // Main Architecture State (3 slots each + Conditioner Addon slots)
+  // Main Architecture State (3 slots each + Conditioner Addon slots + Dynamic Wires)
   const [architecture, setArchitecture] = useState<ArchitectureState>({
     inputs: [null, null, null],
     boards: [null, null, null],
     outputs: [null, null, null],
     inputConditioners: [null, null, null],
     outputConditioners: [null, null, null],
+    wires: [],
     conditioner: [null, null, null],
   });
 
@@ -45,6 +46,9 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isErrorStatus, setIsErrorStatus] = useState<boolean>(false);
+
+  // App Mode State ('education' | 'developer')
+  const [mode, setMode] = useState<AppMode>('educator');
 
   // Load custom persisted data from localStorage on client mount
   useEffect(() => {
@@ -114,6 +118,7 @@ export default function Home() {
         outputs: cleanSlots(prev.outputs),
         inputConditioners: cleanSlots(prev.inputConditioners || []),
         outputConditioners: cleanSlots(prev.outputConditioners || []),
+        wires: (prev.wires || []).filter((w) => w.conditioner?.id !== componentId),
       };
     });
 
@@ -258,6 +263,71 @@ export default function Home() {
     setStatusMessage(`Removed Add-on from ${busType.toUpperCase()} Channel ${slotIndex + 1}`);
   }, []);
 
+  // Wire Connection Handlers (Free Tool Interactive Wiring)
+  const handleConnectWire = useCallback((fromCategory: 'input' | 'board', fromSlot: number, toCategory: 'board' | 'output', toSlot: number) => {
+    // Constraint: cannot connect input directly to output
+    if (fromCategory === 'input' && toCategory === 'output') {
+      const errorMsg = 'Direct connection from Input to Output is not allowed. Must connect Input ➔ Device and Device ➔ Output.';
+      setErrorMessage(errorMsg);
+      setStatusMessage(`Error: ${errorMsg}`);
+      setIsErrorStatus(true);
+      return;
+    }
+
+    setArchitecture((prev) => {
+      const currentWires = prev.wires || [];
+      const alreadyConnected = currentWires.some(
+        (w) => w.fromCategory === fromCategory && w.fromSlot === fromSlot && w.toCategory === toCategory && w.toSlot === toSlot
+      );
+      if (alreadyConnected) return prev;
+
+      const newWire: WireConnection = {
+        id: `wire-${fromCategory}${fromSlot}-${toCategory}${toSlot}-${Date.now()}`,
+        fromCategory,
+        fromSlot,
+        toCategory,
+        toSlot,
+        conditioner: null,
+      };
+
+      return {
+        ...prev,
+        wires: [...currentWires, newWire],
+      };
+    });
+
+    setErrorMessage(null);
+    setStatusMessage(`Connected ${fromCategory.toUpperCase()} Slot ${fromSlot + 1} ➔ ${toCategory.toUpperCase()} Slot ${toSlot + 1}`);
+    setIsErrorStatus(false);
+  }, []);
+
+  const handleDisconnectWire = useCallback((wireId: string) => {
+    setArchitecture((prev) => ({
+      ...prev,
+      wires: (prev.wires || []).filter((w) => w.id !== wireId),
+    }));
+    setStatusMessage('Disconnected wire connection');
+    setIsErrorStatus(false);
+  }, []);
+
+  const handleAttachWireConditioner = useCallback((wireId: string, conditioner: KitComponent) => {
+    setArchitecture((prev) => ({
+      ...prev,
+      wires: (prev.wires || []).map((w) => (w.id === wireId ? { ...w, conditioner } : w)),
+    }));
+    setStatusMessage(`Attached ${conditioner.name} to Wire Connection`);
+    setIsErrorStatus(false);
+  }, []);
+
+  const handleRemoveWireConditioner = useCallback((wireId: string) => {
+    setArchitecture((prev) => ({
+      ...prev,
+      wires: (prev.wires || []).map((w) => (w.id === wireId ? { ...w, conditioner: null } : w)),
+    }));
+    setStatusMessage('Removed Add-on from Wire Connection');
+    setIsErrorStatus(false);
+  }, []);
+
   // Component Selection (Highlights slot without resetting code variations)
   const handleSelectComponent = useCallback((component: KitComponent) => {
     setSelectedComponent(component);
@@ -271,6 +341,13 @@ export default function Home() {
     setStatusMessage(`Active Variation: ${variation.title}`);
   }, []);
 
+  // Mode Selection Handler
+  const handleModeChange = useCallback((newMode: AppMode) => {
+    setMode(newMode);
+    setStatusMessage(`Switched to ${newMode === 'developer' ? 'Developer' : 'Educator'} Mode`);
+    setIsErrorStatus(false);
+  }, []);
+
   // Remove Component from Slot
   const handleRemoveComponent = useCallback((category: ComponentCategory, slotIndex: number) => {
     setArchitecture((prev) => {
@@ -281,9 +358,18 @@ export default function Home() {
       }
       const updatedSlots = [...prev[key]];
       updatedSlots[slotIndex] = null;
+
+      // Clean up connected wires
+      const cleanWires = (prev.wires || []).filter((w) => {
+        if (w.fromCategory === category && w.fromSlot === slotIndex) return false;
+        if (w.toCategory === category && w.toSlot === slotIndex) return false;
+        return true;
+      });
+
       return {
         ...prev,
         [key]: updatedSlots,
+        wires: cleanWires,
       };
     });
     setStatusMessage(`Cleared ${category.toUpperCase()} Slot ${slotIndex + 1}`);
@@ -297,6 +383,7 @@ export default function Home() {
       outputs: [null, null, null],
       inputConditioners: [null, null, null],
       outputConditioners: [null, null, null],
+      wires: [],
       conditioner: [null, null, null],
     });
     setSelectedComponent(null);
@@ -319,6 +406,24 @@ export default function Home() {
       outputs: [ledComp, null, null],
       inputConditioners: [null, null, null],
       outputConditioners: [resistorComp, null, null],
+      wires: [
+        {
+          id: 'demo-wire-in0-b1',
+          fromCategory: 'input',
+          fromSlot: 0,
+          toCategory: 'board',
+          toSlot: 1,
+          conditioner: null,
+        },
+        {
+          id: 'demo-wire-b1-out0',
+          fromCategory: 'board',
+          fromSlot: 1,
+          toCategory: 'output',
+          toSlot: 0,
+          conditioner: resistorComp,
+        },
+      ],
       conditioner: [resistorComp, null, null],
     });
 
@@ -348,8 +453,10 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-zinc-100 text-zinc-900 font-sans overflow-hidden">
-      {/* Top Application Header */}
-      <Header onReset={handleReset} onLoadDemo={handleLoadDemo} />
+      {/* Top Application Header (Hidden in Educator Mode) */}
+      {mode !== 'educator' && (
+        <Header onReset={handleReset} onLoadDemo={handleLoadDemo} />
+      )}
 
       {/* Main Workspace Layout */}
       <div className="flex-1 flex overflow-hidden">
@@ -360,6 +467,7 @@ export default function Home() {
           onDeleteComponent={handleDeleteComponent}
           onDragStartComponent={handleDragStart}
           onDragEndComponent={handleDragEnd}
+          mode={mode}
         />
 
         {/* Center & Right Canvas: Flexible Cards Layout */}
@@ -381,8 +489,13 @@ export default function Home() {
               onRemoveComponent={handleRemoveComponent}
               onDropConditioner={handleDropConditioner}
               onRemoveConditioner={handleRemoveConditioner}
+              onConnectWire={handleConnectWire}
+              onDisconnectWire={handleDisconnectWire}
+              onAttachWireConditioner={handleAttachWireConditioner}
+              onRemoveWireConditioner={handleRemoveWireConditioner}
               onInvalidDropAttempt={handleInvalidDropAttempt}
               onDismissError={() => setErrorMessage(null)}
+              mode={mode}
             />
           )}
 
@@ -410,6 +523,7 @@ export default function Home() {
               onAddCustomCase={handleAddCustomCase}
               onUpdateCase={handleUpdateCase}
               onDeleteCustomCase={handleDeleteCustomCase}
+              mode={mode}
             />
           )}
 
@@ -431,6 +545,8 @@ export default function Home() {
         architecture={architecture}
         statusMessage={statusMessage || undefined}
         isError={isErrorStatus}
+        mode={mode}
+        onModeChange={handleModeChange}
       />
     </div>
   );

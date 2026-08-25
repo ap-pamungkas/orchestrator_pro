@@ -86,4 +86,32 @@ describe('ConditionerSlot Component', () => {
     fireEvent.click(removeBtn);
     expect(handleRemove).toHaveBeenCalledWith('input', 0);
   });
+
+  it('should render seamless direct bypass when Direct component is attached', () => {
+    const handleRemove = vi.fn();
+    const directComp: KitComponent = {
+      id: 'direct',
+      name: 'Direct',
+      category: 'conditioner',
+      type: 'Direct Bypass',
+    };
+
+    render(
+      <ConditionerSlot
+        busType="output"
+        slotIndex={1}
+        component={directComp}
+        isRequired={false}
+        draggedCategory={null}
+        onDropConditioner={vi.fn()}
+        onRemoveConditioner={handleRemove}
+        onInvalidDropAttempt={vi.fn()}
+      />
+    );
+
+    const removeDirectBtn = screen.getByTitle('Remove direct bypass');
+    expect(removeDirectBtn).toBeInTheDocument();
+    fireEvent.click(removeDirectBtn);
+    expect(handleRemove).toHaveBeenCalledWith('output', 1);
+  });
 });

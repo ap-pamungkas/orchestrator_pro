@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppLogoIcon, RefreshCwIcon, CpuIcon } from '../icons/Icons';
+import { AppLogoIcon, RefreshCwIcon } from '../icons/Icons';
 
 interface HeaderProps {
   onReset: () => void;
@@ -20,13 +20,13 @@ export const Header: React.FC<HeaderProps> = ({ onReset, onLoadDemo }) => {
 
         <div className="h-4 w-[1px] bg-zinc-200" />
 
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200/80 flex items-center gap-1.5">
             <CpuIcon className="w-3 h-3 text-blue-600" />
             ESP32 NodeMCU Kit
           </span>
           <span className="text-xs text-zinc-400 font-mono">v1.0 (Phase 1)</span>
-        </div>
+        </div> */}
       </div>
 
       {/* Quick Action Toolbar */}

@@ -6,7 +6,8 @@ import {
   CodeIcon,
   FileCodeIcon,
   CheckIcon,
-  TerminalIcon
+  TerminalIcon,
+  CpuIcon
 } from '../icons/Icons';
 
 interface CodeVariationPanelProps {
@@ -70,13 +71,17 @@ export const CodeVariationPanel: React.FC<CodeVariationPanelProps> = ({
           <div className="p-3.5 bg-gradient-to-b from-blue-50/50 to-white border-b border-zinc-200/80">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-white border border-blue-200/80 p-1 flex items-center justify-center shadow-xs flex-shrink-0">
-                <Image
-                  src={selectedComponent.image}
-                  alt={selectedComponent.name}
-                  width={42}
-                  height={42}
-                  className="object-contain max-h-10 max-w-10 drop-shadow-xs"
-                />
+                {selectedComponent.image ? (
+                  <Image
+                    src={selectedComponent.image}
+                    alt={selectedComponent.name}
+                    width={42}
+                    height={42}
+                    className="object-contain max-h-10 max-w-10 drop-shadow-xs"
+                  />
+                ) : (
+                  <CpuIcon className="w-6 h-6 text-zinc-400" />
+                )}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -244,7 +249,7 @@ export const CodeVariationPanel: React.FC<CodeVariationPanelProps> = ({
                 <div className="flex-1 flex flex-col">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-mono text-zinc-400">
-                      main.cpp (ESP32 Arduino C++)
+                      sketch.ino (ESP32 Arduino Sketch)
                     </span>
                   </div>
                   <pre className="flex-1 bg-zinc-900 text-zinc-100 p-3 rounded-lg font-mono text-[11px] overflow-x-auto leading-relaxed border border-zinc-800 custom-scrollbar">
