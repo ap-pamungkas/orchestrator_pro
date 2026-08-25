@@ -11,10 +11,10 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
     "pre-push": "npm run lint && npm run type-check && npm run test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "seed": "tsx prisma/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
