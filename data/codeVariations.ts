@@ -373,4 +373,89 @@ void loop() {
   }
 }`,
   },
+
+  // VARIATIONS FOR RELAY MODULE
+  {
+    id: 'EX-RELAY-01',
+    componentId: 'relay',
+    title: 'Relay Switch Periodic Toggle',
+    description: 'Toggles an optocoupler isolated relay on and off with 2-second cycle intervals.',
+    difficulty: 'Beginner',
+    inputCount: 0,
+    outputCount: 1,
+    command: 'Relay Control',
+    setupSummary: 'ESP32 (Board) ➔ Relay (Output: GPIO 25)',
+    logicSummary: 'Activates the electromagnetic coil on GPIO 25 to close the normally-open (NO) contact.',
+    codeExplanation: [
+      {
+        symbol: 'digitalWrite(RELAY_PIN, HIGH)',
+        description: 'Triggers the optocoupler transistor to energize the relay mechanical switch coil.',
+      },
+    ],
+    sourceCode: `// ========================
+// OUTPUT ASSIGN
+// ========================
+const int RELAY_PIN = 25;
+
+// ========================
+// SETUP
+// ========================
+void setup() {
+  pinMode(RELAY_PIN, OUTPUT);
+}
+
+// ========================
+// COMMAND
+// ========================
+void loop() {
+  // Turn relay ON (NO contact closed)
+  digitalWrite(RELAY_PIN, HIGH);
+  delay(2000);
+  
+  // Turn relay OFF (NO contact open)
+  digitalWrite(RELAY_PIN, LOW);
+  delay(2000);
+}`,
+  },
+
+  // VARIATIONS FOR ESP32-CAM
+  {
+    id: 'EX-CAM-01',
+    componentId: 'esp32-cam',
+    title: 'ESP32-CAM Flashlight LED Control',
+    description: 'Controls the high-power onboard camera illumination flashlight LED on GPIO 4.',
+    difficulty: 'Beginner',
+    inputCount: 0,
+    outputCount: 1,
+    command: 'Flashlight Control',
+    setupSummary: 'ESP32-CAM (Board: GPIO 4 Onboard Flash)',
+    logicSummary: 'Drives high-brightness surface mount flashlight LED with digital logic.',
+    codeExplanation: [
+      {
+        symbol: 'const int FLASH_LED = 4',
+        description: 'Designated high-power illumination LED pin connected on the ESP32-CAM AI-Thinker board.',
+      },
+    ],
+    sourceCode: `// ========================
+// OUTPUT ASSIGN
+// ========================
+const int FLASH_LED = 4;
+
+// ========================
+// SETUP
+// ========================
+void setup() {
+  pinMode(FLASH_LED, OUTPUT);
+}
+
+// ========================
+// COMMAND
+// ========================
+void loop() {
+  digitalWrite(FLASH_LED, HIGH); // Flash ON
+  delay(1000);
+  digitalWrite(FLASH_LED, LOW);  // Flash OFF
+  delay(1000);
+}`,
+  },
 ];

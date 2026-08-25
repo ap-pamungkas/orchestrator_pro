@@ -38,4 +38,22 @@ describe('KIT_COMPONENTS Dataset', () => {
     expect(direct?.category).toBe('conditioner');
     expect(direct?.name).toContain('Direct');
   });
+
+  it('should contain newly added module components with valid assets', () => {
+    const esp32Cam = KIT_COMPONENTS.find((c) => c.id === 'esp32-cam');
+    expect(esp32Cam).toBeDefined();
+    expect(esp32Cam?.image).toBe('/assets/board/esp32-cam.png');
+
+    const pico = KIT_COMPONENTS.find((c) => c.id === 'rpi-pico');
+    expect(pico).toBeDefined();
+    expect(pico?.image).toBe('/assets/board/rpi_pi_pico.png');
+
+    const tc1508a = KIT_COMPONENTS.find((c) => c.id === 'driver-tc1508a');
+    expect(tc1508a).toBeDefined();
+    expect(tc1508a?.image).toBe('/assets/conditioner/TC1508A.png');
+
+    const relay = KIT_COMPONENTS.find((c) => c.id === 'relay');
+    expect(relay).toBeDefined();
+    expect(relay?.image).toBe('/assets/output/relay.png');
+  });
 });

@@ -59,6 +59,16 @@ export const KIT_COMPONENTS: KitComponent[] = [
     statusBadge: 'Primary Controller',
   },
   {
+    id: 'esp32-cam',
+    name: 'ESP32-CAM',
+    category: 'board',
+    type: 'AI-Thinker OV2640 Dev Board',
+    description: 'ESP32 board with OV2640 camera sensor, microSD slot, and built-in flashlight LED.',
+    image: '/assets/board/esp32-cam.png',
+    pinInfo: '16 Pins + Camera Header',
+    statusBadge: 'Camera & Vision',
+  },
+  {
     id: 'arduino-uno',
     name: 'Arduino Uno R3',
     category: 'board',
@@ -78,6 +88,16 @@ export const KIT_COMPONENTS: KitComponent[] = [
     pinInfo: '40-Pin GPIO Header',
     statusBadge: 'Linux SBC',
   },
+  {
+    id: 'rpi-pico',
+    name: 'Raspberry Pi Pico',
+    category: 'board',
+    type: 'RP2040 Dual ARM Cortex-M0+',
+    description: 'Flexible 133MHz dual-core RP2040 micro-controller board with 2MB flash.',
+    image: '/assets/board/rpi_pi_pico.png',
+    pinInfo: '40-Pin Header (3.3V Logic)',
+    statusBadge: 'RP2040 Dual Core',
+  },
 
   // CONDITIONER / ADD-ON COMPONENTS
   {
@@ -96,7 +116,7 @@ export const KIT_COMPONENTS: KitComponent[] = [
     category: 'conditioner',
     type: 'Current Limiter',
     description: '220 Ohm current-limiting resistor required for LED and diode circuits.',
-    image: '/assets/conditioner/resistor.png', // fallback thumbnail or resistor
+    image: '/assets/conditioner/resistor.png',
     pinInfo: 'Inline Series (220Ω)',
     statusBadge: 'LED Protection',
   },
@@ -119,6 +139,16 @@ export const KIT_COMPONENTS: KitComponent[] = [
     image: '/assets/conditioner/resistor.png',
     pinInfo: 'Filter (100nF)',
     statusBadge: 'Noise Filter',
+  },
+  {
+    id: 'driver-tc1508a',
+    name: 'TC1508A Motor Driver',
+    category: 'conditioner',
+    type: 'Dual H-Bridge Driver',
+    description: 'Dual channel MOSFET H-bridge motor driver module for driving DC motors and stepper motors.',
+    image: '/assets/conditioner/TC1508A.png',
+    pinInfo: 'INA / INB / Out A-B',
+    statusBadge: 'Dual H-Bridge',
   },
 
   // OUTPUT COMPONENTS
@@ -145,6 +175,17 @@ export const KIT_COMPONENTS: KitComponent[] = [
     pinInfo: 'GPIO 23',
     defaultGpio: '23',
     statusBadge: 'PWM / Tone',
+  },
+  {
+    id: 'relay',
+    name: '1-Channel Relay',
+    category: 'output',
+    type: 'Optocoupler Relay',
+    description: '5V / 3.3V opto-isolated relay module for high-voltage and high-current AC/DC device switching.',
+    image: '/assets/output/relay.png',
+    pinInfo: 'GPIO 25',
+    defaultGpio: '25',
+    statusBadge: 'Opto-Isolated',
   },
   {
     id: 'servo',

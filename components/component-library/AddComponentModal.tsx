@@ -18,13 +18,18 @@ const IMAGE_PRESETS: { label: string; src: string; category: ComponentCategory }
   { label: 'DHT22 Sensor', src: '/assets/input/dht22.png', category: 'input' },
   { label: 'IR Motion', src: '/assets/input/infra_red.png', category: 'input' },
   { label: 'ESP32 Core', src: '/assets/board/esp32.png', category: 'board' },
+  { label: 'ESP32-CAM', src: '/assets/board/esp32-cam.png', category: 'board' },
   { label: 'Arduino Uno', src: '/assets/board/arduino.png', category: 'board' },
-  { label: 'Raspberry Pi', src: '/assets/board/RPI.png', category: 'board' },
+  { label: 'Raspberry Pi 4', src: '/assets/board/RPI.png', category: 'board' },
+  { label: 'Raspberry Pi Pico', src: '/assets/board/rpi_pi_pico.png', category: 'board' },
   { label: 'LED Lamp', src: '/assets/output/led.png', category: 'output' },
   { label: 'Active Buzzer', src: '/assets/output/buzzer.png', category: 'output' },
+  { label: '1-Channel Relay', src: '/assets/output/relay.png', category: 'output' },
   { label: 'Micro Servo', src: '/assets/output/servo.png', category: 'output' },
+  { label: 'SG90 Servo', src: '/assets/output/servo_sg90.png', category: 'output' },
   { label: 'LED Matrix', src: '/assets/output/led-matrix.png', category: 'output' },
   { label: 'Resistor Module', src: '/assets/conditioner/resistor.png', category: 'conditioner' },
+  { label: 'TC1508A Motor Driver', src: '/assets/conditioner/TC1508A.png', category: 'conditioner' },
 ];
 
 const COMPONENT_PRESETS: {
@@ -75,7 +80,7 @@ const COMPONENT_PRESETS: {
     pinInfo: 'GPIO 25',
     defaultGpio: '25',
     statusBadge: 'Opto-Isolated',
-    image: '/assets/output/led.png',
+    image: '/assets/output/relay.png',
   },
   {
     category: 'output',
