@@ -64,6 +64,19 @@ async function main() {
 
   await prisma.component.create({
     data: {
+      id: "capacitor-100nf",
+      name: "100nF Capacitor",
+      category: ComponentCategory.conditioner,
+      type: "Decoupling Filter",
+      description: "100nF ceramic capacitor for power rail noise filtering and switch debouncing.",
+      imageUrl: "/assets/conditioner/resistor.png",
+      pinInfo: "Filter (100nF)",
+      statusBadge: "Noise Filter",
+    },
+  });
+
+  await prisma.component.create({
+    data: {
       id: "driver-tc1508a",
       name: "TC1508A Motor Driver",
       category: ComponentCategory.conditioner,
@@ -130,6 +143,13 @@ async function main() {
       pinInfo: "GPIO 15",
       defaultGpio: "15",
       statusBadge: "Single Bus",
+      pins: {
+        create: [
+          { pinLabel: "VCC", pinType: "POWER" },
+          { pinLabel: "DATA", pinType: "GPIO", defaultGpioNum: "15" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
     },
   });
 
@@ -144,6 +164,13 @@ async function main() {
       pinInfo: "GPIO 19",
       defaultGpio: "19",
       statusBadge: "Digital Trigger",
+      pins: {
+        create: [
+          { pinLabel: "VCC", pinType: "POWER" },
+          { pinLabel: "OUT", pinType: "GPIO", defaultGpioNum: "19" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
     },
   });
 
@@ -160,6 +187,19 @@ async function main() {
       imageUrl: "/assets/board/esp32.png",
       pinInfo: "30 Pins (3.3V Logic)",
       statusBadge: "Primary Controller",
+      pins: {
+        create: [
+          { pinLabel: "VIN", pinType: "POWER" },
+          { pinLabel: "3V3", pinType: "POWER" },
+          { pinLabel: "GND", pinType: "GROUND" },
+          { pinLabel: "GPIO 2", pinType: "GPIO", defaultGpioNum: "2" },
+          { pinLabel: "GPIO 18", pinType: "GPIO", defaultGpioNum: "18" },
+          { pinLabel: "GPIO 19", pinType: "GPIO", defaultGpioNum: "19" },
+          { pinLabel: "GPIO 23", pinType: "GPIO", defaultGpioNum: "23" },
+          { pinLabel: "GPIO 25", pinType: "GPIO", defaultGpioNum: "25" },
+          { pinLabel: "GPIO 34", pinType: "ADC", defaultGpioNum: "34" },
+        ],
+      },
     },
   });
 
@@ -173,6 +213,15 @@ async function main() {
       imageUrl: "/assets/board/esp32-cam.png",
       pinInfo: "16 Pins + Camera Header",
       statusBadge: "Camera & Vision",
+      pins: {
+        create: [
+          { pinLabel: "5V", pinType: "POWER" },
+          { pinLabel: "3V3", pinType: "POWER" },
+          { pinLabel: "GND", pinType: "GROUND" },
+          { pinLabel: "GPIO 4 (FLASH)", pinType: "GPIO", defaultGpioNum: "4" },
+          { pinLabel: "GPIO 0", pinType: "GPIO", defaultGpioNum: "0" },
+        ],
+      },
     },
   });
 
@@ -186,6 +235,38 @@ async function main() {
       imageUrl: "/assets/board/arduino.png",
       pinInfo: "14 Digital / 6 Analog",
       statusBadge: "Secondary Board",
+      pins: {
+        create: [
+          { pinLabel: "5V", pinType: "POWER" },
+          { pinLabel: "3.3V", pinType: "POWER" },
+          { pinLabel: "GND", pinType: "GROUND" },
+          { pinLabel: "D2", pinType: "GPIO", defaultGpioNum: "2" },
+          { pinLabel: "D13", pinType: "GPIO", defaultGpioNum: "13" },
+          { pinLabel: "A0", pinType: "ADC", defaultGpioNum: "A0" },
+        ],
+      },
+    },
+  });
+
+  await prisma.component.create({
+    data: {
+      id: "rpi-4",
+      name: "Raspberry Pi 4",
+      category: ComponentCategory.board,
+      type: "Quad-core Cortex-A72 SBC",
+      description: "High-performance 64-bit ARM single board computer.",
+      imageUrl: "/assets/board/RPI.png",
+      pinInfo: "40-Pin GPIO Header",
+      statusBadge: "Linux SBC",
+      pins: {
+        create: [
+          { pinLabel: "5V", pinType: "POWER" },
+          { pinLabel: "3V3", pinType: "POWER" },
+          { pinLabel: "GPIO 14 (TX)", pinType: "GPIO", defaultGpioNum: "14" },
+          { pinLabel: "GPIO 15 (RX)", pinType: "GPIO", defaultGpioNum: "15" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
     },
   });
 
@@ -199,6 +280,15 @@ async function main() {
       imageUrl: "/assets/board/rpi_pi_pico.png",
       pinInfo: "40-Pin Header (3.3V Logic)",
       statusBadge: "RP2040 Dual Core",
+      pins: {
+        create: [
+          { pinLabel: "VBUS (5V)", pinType: "POWER" },
+          { pinLabel: "3V3 (OUT)", pinType: "POWER" },
+          { pinLabel: "GND", pinType: "GROUND" },
+          { pinLabel: "GP0", pinType: "GPIO", defaultGpioNum: "0" },
+          { pinLabel: "GP25 (LED)", pinType: "GPIO", defaultGpioNum: "25" },
+        ],
+      },
     },
   });
 
@@ -238,6 +328,13 @@ async function main() {
       pinInfo: "GPIO 23",
       defaultGpio: "23",
       statusBadge: "PWM / Tone",
+      pins: {
+        create: [
+          { pinLabel: "VCC (+)", pinType: "POWER" },
+          { pinLabel: "SIG", pinType: "GPIO", defaultGpioNum: "23" },
+          { pinLabel: "GND (-)", pinType: "GROUND" },
+        ],
+      },
     },
   });
 
@@ -252,6 +349,13 @@ async function main() {
       pinInfo: "GPIO 25",
       defaultGpio: "25",
       statusBadge: "Opto-Isolated",
+      pins: {
+        create: [
+          { pinLabel: "VCC", pinType: "POWER" },
+          { pinLabel: "IN", pinType: "GPIO", defaultGpioNum: "25" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
     },
   });
 
@@ -266,6 +370,57 @@ async function main() {
       pinInfo: "GPIO 13",
       defaultGpio: "13",
       statusBadge: "50Hz PWM",
+      pins: {
+        create: [
+          { pinLabel: "VCC (5V)", pinType: "POWER" },
+          { pinLabel: "PWM (SIG)", pinType: "PWM", defaultGpioNum: "13" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
+    },
+  });
+
+  await prisma.component.create({
+    data: {
+      id: "servo-sg90",
+      name: "SG90 Micro Servo (TowerPro)",
+      category: ComponentCategory.output,
+      type: "Position Servo 180°",
+      description: "Miniature 9g position-controlled servo motor for robotics and angle positioning.",
+      imageUrl: "/assets/output/servo_sg90.png",
+      pinInfo: "GPIO 14",
+      defaultGpio: "14",
+      statusBadge: "180° Positional",
+      pins: {
+        create: [
+          { pinLabel: "VCC (5V)", pinType: "POWER" },
+          { pinLabel: "PWM (SIG)", pinType: "PWM", defaultGpioNum: "14" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
+    },
+  });
+
+  await prisma.component.create({
+    data: {
+      id: "led-matrix",
+      name: "MAX7219 LED Matrix",
+      category: ComponentCategory.output,
+      type: "8x8 SPI Display Output",
+      description: "8x8 dot matrix LED display module driven by MAX7219 SPI controller.",
+      imageUrl: "/assets/output/led-matrix.png",
+      pinInfo: "GPIO 23 (DIN), 18 (CLK), 5 (CS)",
+      defaultGpio: "5",
+      statusBadge: "SPI Bus",
+      pins: {
+        create: [
+          { pinLabel: "VCC", pinType: "POWER" },
+          { pinLabel: "DIN", pinType: "SPI_MOSI", defaultGpioNum: "23" },
+          { pinLabel: "CS", pinType: "SPI_CS", defaultGpioNum: "5" },
+          { pinLabel: "CLK", pinType: "SPI_CLK", defaultGpioNum: "18" },
+          { pinLabel: "GND", pinType: "GROUND" },
+        ],
+      },
     },
   });
 
